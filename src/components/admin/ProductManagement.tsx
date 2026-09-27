@@ -8,7 +8,8 @@ import {
   Image as ImageIcon,
   Upload,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  PackageOpen
 } from 'lucide-react';
 import { ProductItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -173,8 +174,25 @@ export const ProductManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-xs">
-                    Tidak ada produk yang ditemukan.
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-xs">
+                    {products.length === 0 ? (
+                      <div className="py-4 flex flex-col items-center justify-center">
+                        <PackageOpen className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
+                        <p className="font-bold text-slate-700 text-sm">Katalog Produk Masih Kosong</p>
+                        <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto">
+                          Anda sedang memulai dari awal. Tambahkan bahan, komponen modul, atau alat praktikum pertama Anda ke toko.
+                        </p>
+                        <button
+                          onClick={handleOpenAdd}
+                          className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs transition inline-flex items-center"
+                        >
+                          <Plus className="w-4 h-4 mr-1.5" />
+                          Tambah Produk Baru
+                        </button>
+                      </div>
+                    ) : (
+                      "Tidak ada produk yang ditemukan dengan pencarian tersebut."
+                    )}
                   </td>
                 </tr>
               ) : (

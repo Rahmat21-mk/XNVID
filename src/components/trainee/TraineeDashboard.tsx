@@ -133,10 +133,16 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ searchQuery 
       </div>
 
       {filteredVideos.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-          <Video className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <h4 className="text-sm font-bold text-slate-800">Video tidak ditemukan</h4>
-          <p className="text-xs text-slate-500 mt-0.5">Coba gunakan kata kunci pencarian yang lain.</p>
+        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center shadow-2xs">
+          <Video className="w-12 h-12 text-slate-300 mx-auto mb-3 stroke-1" />
+          <h4 className="text-sm font-bold text-slate-800">
+            {videos.length === 0 ? 'Belum Ada Video Pelatihan' : 'Video Tidak Ditemukan'}
+          </h4>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+            {videos.length === 0
+              ? 'Administrator sedang mempersiapkan modul video pelatihan baru. Video pembelajaran akan segera muncul di sini begitu diunggah.'
+              : 'Tidak ada modul video yang sesuai dengan kata kunci pencarian Anda. Coba kata kunci yang lain.'}
+          </p>
         </div>
       )}
 

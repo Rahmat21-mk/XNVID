@@ -80,7 +80,17 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const CLEAN_SLATE_FLAG = 'xnvd_fresh_scratch_2026_v1';
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Pastikan browser membersihkan data video & produk lama untuk mulai dari awal
+  if (typeof window !== 'undefined' && localStorage.getItem(CLEAN_SLATE_FLAG) !== 'true') {
+    localStorage.removeItem('xnvd_videos');
+    localStorage.removeItem('xnvd_products');
+    localStorage.removeItem('xnvd_cart');
+    localStorage.setItem(CLEAN_SLATE_FLAG, 'true');
+  }
+
   // Session login user
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('xnvd_currentUser');

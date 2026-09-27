@@ -143,7 +143,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) 
             Manajemen Video & Filter Duplikat
           </h3>
           <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-            Lihat daftar 20 modul, filter judul ganda, dan batas upload 3 menit.
+            Upload modul video pelatihan, filter judul ganda, dan kelola repositori.
           </p>
           <div className="mt-3 flex items-center text-xs font-bold text-indigo-600">
             <span>Kelola Repositori Video</span>

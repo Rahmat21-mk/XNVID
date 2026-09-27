@@ -171,21 +171,13 @@ export const VideoManagement: React.FC = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-
-    if (combined.length < 4) {
-      setFormError(`Perhatian: Anda baru memilih ${combined.length} video. Disarankan memilih minimal 4 video sekali upload agar proses pemenuhan 200 video cepat selesai.`);
-    }
   };
 
   // Hapus salah satu berkas dari antrean upload
   const removeStagedVideo = (index: number) => {
     const updated = stagedVideos.filter((_, idx) => idx !== index);
     setStagedVideos(updated);
-    if (updated.length > 0 && updated.length < 4) {
-      setFormError(`Perhatian: Jumlah video saat ini ${updated.length}. Minimal 4 video dalam sekali unggah.`);
-    } else {
-      setFormError(null);
-    }
+    setFormError(null);
   };
 
   // Eksekusi Unggah Batch ke Sistem
@@ -195,11 +187,6 @@ export const VideoManagement: React.FC = () => {
 
     if (stagedVideos.length === 0) {
       setFormError('Silakan pilih berkas video terlebih dahulu.');
-      return;
-    }
-
-    if (stagedVideos.length < 4) {
-      setFormError(`Syarat Unggah Batch: Minimal 4 video sekaligus dalam sekali proses (Saat ini: ${stagedVideos.length} video). Tambahkan minimal ${4 - stagedVideos.length} video lagi.`);
       return;
     }
 
@@ -364,8 +351,25 @@ export const VideoManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredVideos.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs">
-                    Tidak ada video yang sesuai dengan pencarian.
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-xs">
+                    {videos.length === 0 ? (
+                      <div className="py-4 flex flex-col items-center justify-center">
+                        <FileVideo className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
+                        <p className="font-bold text-slate-700 text-sm">Repositori Video Masih Kosong</p>
+                        <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto">
+                          Anda sedang memulai dari awal. Silakan pilih dan unggah video pelatihan praktikum Anda untuk mulai mengisi repositori.
+                        </p>
+                        <button
+                          onClick={() => setIsUploadModalOpen(true)}
+                          className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs transition inline-flex items-center"
+                        >
+                          <UploadCloud className="w-4 h-4 mr-1.5" />
+                          Upload Video Sekarang
+                        </button>
+                      </div>
+                    ) : (
+                      "Tidak ada video yang sesuai dengan pencarian."
+                    )}
                   </td>
                 </tr>
               ) : (

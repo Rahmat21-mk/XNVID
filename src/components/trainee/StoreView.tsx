@@ -3,7 +3,8 @@ import {
   Plus,
   Check,
   Tag,
-  Info
+  Info,
+  PackageOpen
 } from 'lucide-react';
 import { ProductItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -73,8 +74,16 @@ export const StoreView: React.FC<StoreViewProps> = ({ searchQuery, openCheckout 
       {/* Grid Produk (Kategori dihapus, Harga Rupiah) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {filteredProducts.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-slate-200">
-            Tidak ada produk yang cocok dengan pencarian.
+          <div className="col-span-full py-16 px-6 text-center bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <PackageOpen className="w-12 h-12 text-slate-300 mx-auto mb-3 stroke-1" />
+            <h4 className="text-sm font-bold text-slate-800">
+              {products.length === 0 ? 'Katalog Toko Masih Kosong' : 'Produk Tidak Ditemukan'}
+            </h4>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+              {products.length === 0
+                ? 'Administrator sedang mempersiapkan katalog bahan praktikum dan alat uji baru. Produk bersertifikat akan segera tersedia di sini.'
+                : 'Tidak ada produk yang cocok dengan kata kunci pencarian Anda. Silakan coba kata kunci yang lain.'}
+            </p>
           </div>
         ) : (
           filteredProducts.map((product) => {

@@ -7,6 +7,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { TraineeDashboard } from './components/trainee/TraineeDashboard';
 import { StoreView } from './components/trainee/StoreView';
 import { TraineeOrdersView } from './components/trainee/TraineeOrdersView';
+import { TraineeBottomNav } from './components/trainee/TraineeBottomNav';
 import { CartCheckoutModal } from './components/trainee/CartCheckoutModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { VideoManagement } from './components/admin/VideoManagement';
@@ -23,6 +24,7 @@ const MainAppContent: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('trainee-videos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -56,18 +58,21 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 font-['Plus_Jakarta_Sans',sans-serif] overflow-hidden">
-      {/* 1. Navy Blue Sidebar with Elearning XNVD Brand at Top */}
+      {/* 1. Navy Blue Sidebar (Desktop static & Mobile slide-over drawer) */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => {
           setActiveTab(tab);
           setSearchQuery('');
+          setIsMobileMenuOpen(false);
         }}
         openAuthModal={() => setIsAuthModalOpen(true)}
+        isMobileOpen={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* 2. Main Content Area: White & Light Gray theme */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50">
+      {/* 2. Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 relative">
         {/* Top Navbar */}
         <Navbar
           activeTab={activeTab}
@@ -76,10 +81,11 @@ const MainAppContent: React.FC = () => {
           openAuthModal={() => setIsAuthModalOpen(true)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(prev => !prev)}
         />
 
-        {/* Dynamic Main Workspace */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 scrollbar-thin scrollbar-thumb-slate-300">
+        {/* Dynamic Main Workspace with safe-bottom padding so nothing is covered by the bottom menu */}
+        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-28 lg:pb-8 scrollbar-thin scrollbar-thumb-slate-300">
           <div className="max-w-7xl mx-auto">
             {/* Trainee Views */}
             {activeTab === 'trainee-videos' && (
@@ -127,6 +133,19 @@ const MainAppContent: React.FC = () => {
             )}
           </div>
         </main>
+
+        {/* Trainee Mobile Bottom Navigation Bar (Ultra-convenient for smartphones & tablets) */}
+        {currentUser.role === 'trainee' && (
+          <TraineeBottomNav
+            activeTab={activeTab}
+            setActiveTab={(tab) => {
+              setActiveTab(tab);
+              setSearchQuery('');
+            }}
+            openCartModal={() => setIsCartModalOpen(true)}
+            onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+          />
+        )}
       </div>
 
       {/* Auth Modal (Switching/Account modal if triggered from navbar) */}

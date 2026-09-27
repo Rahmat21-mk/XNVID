@@ -70,8 +70,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
   const progressPercent = Math.min(100, (currentTime / video.durationSeconds) * 100);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-2.5 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[90vh]">
         {/* Header Modal */}
         <div className="bg-[#0A192F] px-5 py-3 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-2.5 overflow-hidden">
@@ -142,8 +142,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
               className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:h-2 transition-all"
             />
 
-            <div className="flex items-center justify-between text-white text-xs">
-              <div className="flex items-center space-x-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-white text-xs">
+              <div className="flex items-center space-x-2 sm:space-x-2.5">
                 <button onClick={() => setIsPlaying(!isPlaying)} className="p-1 hover:text-blue-400">
                   {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </button>
@@ -160,16 +160,16 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
                 <button onClick={() => setIsMuted(!isMuted)} className="p-1 hover:text-blue-400">
                   {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
-                <span className="font-mono text-[11px] text-slate-300">
+                <span className="font-mono text-[10px] sm:text-[11px] text-slate-300">
                   {formatSeconds(currentTime)} / {video.durationFormatted}
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2.5">
+              <div className="flex items-center space-x-2">
                 <select
                   value={playbackSpeed}
                   onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-[11px] rounded px-1.5 py-0.5 focus:outline-none"
+                  className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] sm:text-[11px] rounded px-1.5 py-0.5 focus:outline-none"
                 >
                   <option value={0.75}>0.75x</option>
                   <option value={1}>1.0x Normal</option>
@@ -177,7 +177,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
                   <option value={1.5}>1.5x</option>
                 </select>
 
-                <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div className="w-12 sm:w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
                   <div className="bg-blue-500 h-full" style={{ width: `${progressPercent}%` }} />
                 </div>
               </div>

@@ -129,11 +129,11 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200 font-['Plus_Jakarta_Sans',sans-serif]">
-      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94vh]">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-2.5 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200 font-['Plus_Jakarta_Sans',sans-serif]">
+      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[94vh]">
         {/* Bar Pilihan Dokumen */}
-        <div className="bg-[#0A192F] px-6 py-3.5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 print:hidden">
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1 sm:pb-0">
+        <div className="bg-[#0A192F] px-4 sm:px-6 py-3 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 print:hidden shrink-0">
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
             <button
               onClick={() => setDocType('invoice')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center shrink-0 ${
@@ -189,7 +189,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
         </div>
 
         {/* Sub-bar Pilihan Format Tanda Tangan Pejabat (QR Code vs TTD Manual) */}
-        <div className="bg-slate-100 px-6 py-2 border-b border-slate-200 flex items-center justify-between text-xs print:hidden">
+        <div className="bg-slate-100 px-4 sm:px-6 py-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs print:hidden shrink-0">
           <span className="text-slate-600 font-medium flex items-center">
             <span className="font-bold text-slate-800 mr-2">Metode Pengesahan Dokumen:</span>
           </span>

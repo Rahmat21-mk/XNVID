@@ -164,7 +164,7 @@ export const LoginPage: React.FC = () => {
         <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-between bg-white">
           <div>
             {/* Navigasi Tab */}
-            <div className="flex border-b border-slate-200 pb-2 mb-6 space-x-4 text-xs font-semibold">
+            <div className="flex border-b border-slate-200 pb-2 mb-6 space-x-3 sm:space-x-4 text-xs font-semibold overflow-x-auto scrollbar-none">
               <button
                 onClick={() => {
                   setActiveTab('trainee-login');

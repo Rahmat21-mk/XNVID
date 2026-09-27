@@ -177,11 +177,11 @@ export const StoreView: React.FC<StoreViewProps> = ({ searchQuery, openCheckout 
 
       {/* Modal Detail Produk */}
       {selectedProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-200 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92dvh] overflow-y-auto p-4 sm:p-6 shadow-xl border border-slate-200 relative">
             <button
               onClick={() => setSelectedProductModal(null)}
-              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition z-10"
             >
               ✕
             </button>

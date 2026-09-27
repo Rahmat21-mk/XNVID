@@ -1,0 +1,6 @@
+{
+  "name": "Elearning XNVD",
+  "description": "Platform pelatihan teknis dan pengadaan peralatan praktik Elearning XNVD dengan pemantauan durasi tonton, toko modul praktik, dan administrasi terpadu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -11,7 +11,9 @@ import {
   FileVideo,
   Sparkles,
   Layers,
-  Check
+  Check,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { VideoItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -42,11 +44,21 @@ const INDUSTRIAL_THUMBNAILS = [
 ];
 
 export const VideoManagement: React.FC = () => {
-  const { videos, addVideosBatch, deleteVideo, refreshServerState } = useApp();
+  const { videos, addVideosBatch, deleteVideo, deleteVideosBatch, refreshServerState } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<VideoItem | null>(null);
+
+  // Seleksi video massal untuk penghapusan
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    mode: 'selected' | 'all';
+    count: number;
+  }>({ isOpen: false, mode: 'selected', count: 0 });
+  const [actionAlert, setActionAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Staged files for batch upload (minimal 4 video)
   const [stagedVideos, setStagedVideos] = useState<StagedVideo[]>([]);
@@ -69,6 +81,70 @@ export const VideoManagement: React.FC = () => {
       v.description.toLowerCase().includes(q)
     );
   });
+
+  // Logika seleksi video
+  const isAllFilteredSelected =
+    filteredVideos.length > 0 && filteredVideos.every(v => selectedVideoIds.includes(v.id));
+  const isSomeFilteredSelected =
+    filteredVideos.some(v => selectedVideoIds.includes(v.id)) && !isAllFilteredSelected;
+
+  const handleToggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      const filteredIdSet = new Set(filteredVideos.map(v => v.id));
+      setSelectedVideoIds(prev => prev.filter(id => !filteredIdSet.has(id)));
+    } else {
+      const combined = Array.from(new Set([...selectedVideoIds, ...filteredVideos.map(v => v.id)]));
+      setSelectedVideoIds(combined);
+    }
+  };
+
+  const handleSelectAllVideos = () => {
+    setSelectedVideoIds(videos.map(v => v.id));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedVideoIds([]);
+  };
+
+  const handleToggleSelectOne = (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedVideoIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleConfirmBatchDelete = async () => {
+    setIsDeletingBatch(true);
+    try {
+      if (deleteConfirmModal.mode === 'all') {
+        const total = videos.length;
+        await deleteVideosBatch([], true);
+        setSelectedVideoIds([]);
+        setDeleteConfirmModal({ isOpen: false, mode: 'all', count: 0 });
+        setActionAlert({
+          type: 'success',
+          message: `Berhasil menghapus seluruh ${total} video pelatihan dari repositori!`
+        });
+      } else {
+        const count = selectedVideoIds.length;
+        await deleteVideosBatch(selectedVideoIds);
+        setSelectedVideoIds([]);
+        setDeleteConfirmModal({ isOpen: false, mode: 'selected', count: 0 });
+        setActionAlert({
+          type: 'success',
+          message: `Berhasil menghapus ${count} video yang dipilih dari repositori!`
+        });
+      }
+    } catch {
+      setActionAlert({
+        type: 'error',
+        message: 'Terjadi kesalahan saat menghapus video.'
+      });
+    } finally {
+      setIsDeletingBatch(false);
+      setTimeout(() => setActionAlert(null), 4000);
+    }
+  };
 
   // Ekstrak nama judul otomatis dan bersihkan
   const formatAutoTitle = (fileName: string, indexOffset: number): string => {
@@ -410,7 +486,33 @@ export const VideoManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Pencarian (Kategori telah dihapus) */}
+      {/* Notifikasi Tindakan */}
+      {actionAlert && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between shadow-2xs animate-in fade-in duration-200 ${
+            actionAlert.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {actionAlert.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            )}
+            <span className="font-medium">{actionAlert.message}</span>
+          </div>
+          <button
+            onClick={() => setActionAlert(null)}
+            className="p-1 hover:bg-black/5 rounded-md transition text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Pencarian */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
         <input
@@ -422,13 +524,98 @@ export const VideoManagement: React.FC = () => {
         />
       </div>
 
+      {/* Toolbar Seleksi & Hapus Massal */}
+      {videos.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleSelectAllFiltered}
+              className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition shadow-2xs ${
+                isAllFilteredSelected
+                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              {isAllFilteredSelected ? (
+                <CheckSquare className="w-4 h-4 text-white" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-400" />
+              )}
+              <span>{isAllFilteredSelected ? 'Batal Pilih Semua' : 'Pilih Semua Video'}</span>
+            </button>
+
+            {selectedVideoIds.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-800 font-medium transition"
+              >
+                Reset Pilihan
+              </button>
+            )}
+
+            <span className="text-xs font-mono text-slate-600 px-2.5 py-1 bg-white border border-slate-200 rounded-lg">
+              <strong className="text-blue-700 font-bold">{selectedVideoIds.length}</strong> dari {videos.length} video dipilih
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {selectedVideoIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmModal({
+                    isOpen: true,
+                    mode: 'selected',
+                    count: selectedVideoIds.length
+                  });
+                }}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Hapus {selectedVideoIds.length} Video Terpilih</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmModal({
+                  isOpen: true,
+                  mode: 'all',
+                  count: videos.length
+                });
+              }}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold transition"
+              title="Hapus seluruh video sekaligus dari awal"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              <span>Hapus Semua Video ({videos.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabel Daftar Video */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th className="px-4 py-3 w-12 text-center">No</th>
+                <th className="px-3 py-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllFilteredSelected}
+                    ref={el => {
+                      if (el) el.indeterminate = isSomeFilteredSelected;
+                    }}
+                    onChange={handleToggleSelectAllFiltered}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    title={isAllFilteredSelected ? "Batal pilih semua" : "Pilih semua video"}
+                  />
+                </th>
+                <th className="px-3 py-3 w-12 text-center">No</th>
                 <th className="px-4 py-3">Modul & Judul Video</th>
                 <th className="px-4 py-3">Durasi</th>
                 <th className="px-4 py-3">Ukuran File</th>
@@ -439,7 +626,7 @@ export const VideoManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredVideos.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-xs">
                     {videos.length === 0 ? (
                       <div className="py-4 flex flex-col items-center justify-center">
                         <FileVideo className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
@@ -461,77 +648,97 @@ export const VideoManagement: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredVideos.map((video, idx) => (
-                  <tr key={video.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-4 py-2.5 text-center font-mono text-slate-400 text-[11px]">
-                      {idx + 1}
-                    </td>
+                filteredVideos.map((video, idx) => {
+                  const isSelected = selectedVideoIds.includes(video.id);
+                  return (
+                    <tr
+                      key={video.id}
+                      className={`transition ${
+                        isSelected
+                          ? 'bg-blue-50/70 border-l-4 border-blue-600'
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="px-3 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleToggleSelectOne(video.id, e)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
 
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center space-x-3">
-                        <div
-                          onClick={() => setPreviewVideo(video)}
-                          className="relative w-14 h-9 rounded-lg overflow-hidden bg-slate-900 shrink-0 cursor-pointer shadow-2xs group"
-                        >
-                          <img
-                            src={video.thumbnail}
-                            alt={video.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition"
-                          />
-                          <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                            <Play className="w-3.5 h-3.5 text-white fill-current" />
+                      <td className="px-3 py-2.5 text-center font-mono text-slate-400 text-[11px]">
+                        {idx + 1}
+                      </td>
+
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center space-x-3">
+                          <div
+                            onClick={() => setPreviewVideo(video)}
+                            className="relative w-14 h-9 rounded-lg overflow-hidden bg-slate-900 shrink-0 cursor-pointer shadow-2xs group"
+                          >
+                            <img
+                              src={video.thumbnail}
+                              alt={video.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition"
+                            />
+                            <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                              <Play className="w-3.5 h-3.5 text-white fill-current" />
+                            </div>
+                          </div>
+                          <div>
+                            <span
+                              onClick={() => setPreviewVideo(video)}
+                              className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer block max-w-md truncate"
+                            >
+                              {video.title}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              Ref: {video.id} • {video.viewsCount || 0}x ditonton
+                            </span>
                           </div>
                         </div>
-                        <div>
-                          <span
+                      </td>
+
+                      <td className="px-4 py-2.5 font-mono font-bold text-slate-900">
+                        {video.durationFormatted}
+                      </td>
+
+                      <td className="px-4 py-2.5 font-mono text-slate-600">
+                        {video.fileSizeMb.toFixed(1)} MB
+                      </td>
+
+                      <td className="px-4 py-2.5 font-mono text-slate-500">
+                        {video.uploadDate ? new Date(video.uploadDate).toLocaleDateString('id-ID') : '-'}
+                      </td>
+
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end space-x-1.5">
+                          <button
                             onClick={() => setPreviewVideo(video)}
-                            className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer block max-w-md truncate"
+                            className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition"
+                            title="Tonton Preview"
                           >
-                            {video.title}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Ref: {video.id} • {video.viewsCount || 0}x ditonton
-                          </span>
+                            <Play className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Hapus video "${video.title}" dari repositori?`)) {
+                                deleteVideo(video.id);
+                                setSelectedVideoIds(prev => prev.filter(id => id !== video.id));
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                            title="Hapus Video Ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-2.5 font-mono font-bold text-slate-900">
-                      {video.durationFormatted}
-                    </td>
-
-                    <td className="px-4 py-2.5 font-mono text-slate-600">
-                      {video.fileSizeMb.toFixed(1)} MB
-                    </td>
-
-                    <td className="px-4 py-2.5 font-mono text-slate-500">
-                      {video.uploadDate ? new Date(video.uploadDate).toLocaleDateString('id-ID') : '-'}
-                    </td>
-
-                    <td className="px-4 py-2.5 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
-                        <button
-                          onClick={() => setPreviewVideo(video)}
-                          className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition"
-                          title="Tonton Preview"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Hapus video "${video.title}" dari repositori?`)) {
-                              deleteVideo(video.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                          title="Hapus Video"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -770,6 +977,67 @@ export const VideoManagement: React.FC = () => {
           video={previewVideo}
           onClose={() => setPreviewVideo(null)}
         />
+      )}
+
+      {/* Modal Konfirmasi Hapus Video Massal */}
+      {deleteConfirmModal.isOpen && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-base text-slate-900">
+                  {deleteConfirmModal.mode === 'all'
+                    ? `Hapus Seluruh Video (${deleteConfirmModal.count} Video)?`
+                    : `Hapus ${deleteConfirmModal.count} Video Terpilih?`}
+                </h3>
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  {deleteConfirmModal.mode === 'all'
+                    ? 'Perhatian: Seluruh video pelatihan akan dibersihkan secara permanen dari server dan daftar putar akun peserta. Anda dapat memulai upload dari awal.'
+                    : `Sebanyak ${deleteConfirmModal.count} video yang telah Anda centang akan dihapus secara permanen dari server dan akun peserta.`}
+                </p>
+                <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
+                  Video yang dihapus tidak dapat dipulihkan. Anda perlu mengunggahnya kembali jika ingin menampilkannya lagi.
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end space-x-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeletingBatch}
+                onClick={() => setDeleteConfirmModal({ isOpen: false, mode: 'selected', count: 0 })}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingBatch}
+                onClick={handleConfirmBatchDelete}
+                className="px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-xs transition flex items-center space-x-1.5"
+              >
+                {isDeletingBatch ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <span>Menghapus...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    <span>
+                      {deleteConfirmModal.mode === 'all'
+                        ? 'Ya, Hapus Semua Video'
+                        : `Ya, Hapus ${deleteConfirmModal.count} Video`}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

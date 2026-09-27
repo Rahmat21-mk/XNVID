@@ -651,6 +651,28 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // Hapus video secara massal (batch delete atau hapus semua video)
+  app.post('/api/videos/batch-delete', (req, res) => {
+    const { videoIds, deleteAll } = req.body;
+    const beforeCount = db.videos.length;
+
+    if (deleteAll === true) {
+      db.videos = [];
+      saveDatabase(db);
+      return res.json({ success: true, count: beforeCount });
+    }
+
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Daftar ID video yang ingin dihapus tidak valid.' });
+    }
+
+    const idsSet = new Set(videoIds);
+    db.videos = db.videos.filter(v => !idsSet.has(v.id));
+    const deletedCount = beforeCount - db.videos.length;
+    saveDatabase(db);
+    res.json({ success: true, count: deletedCount });
+  });
+
   // 14. Simpan Pengaturan (Aplikasi, Pembayaran, Kurir)
   app.post('/api/settings/app', (req, res) => {
     db.appSettings = { ...db.appSettings, ...req.body };

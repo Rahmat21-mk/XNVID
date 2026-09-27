@@ -49,6 +49,7 @@ interface AppContextType {
   addVideo: (videoData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>) => { success: boolean; error?: string };
   addVideosBatch: (videosData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>[]) => Promise<{ success: boolean; count: number; error?: string }>;
   deleteVideo: (videoId: string) => void;
+  deleteVideosBatch: (videoIds: string[], deleteAll?: boolean) => Promise<{ success: boolean; count: number }>;
   updateVideo: (videoId: string, data: Partial<VideoItem>) => void;
   // Products
   products: ProductItem[];
@@ -632,6 +633,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetch(`/api/videos/${videoId}`, { method: 'DELETE' }).catch(() => {});
   };
 
+  const deleteVideosBatch = async (videoIds: string[], deleteAll = false) => {
+    if (deleteAll) {
+      const count = videos.length;
+      setVideos([]);
+      try {
+        await fetch('/api/videos/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deleteAll: true })
+        });
+        await refreshServerState();
+      } catch (err) {
+        console.warn('Gagal menghapus semua video dari server:', err);
+      }
+      return { success: true, count };
+    }
+
+    if (!videoIds || videoIds.length === 0) return { success: true, count: 0 };
+    const idsSet = new Set(videoIds);
+    setVideos(prev => prev.filter(v => !idsSet.has(v.id)));
+
+    try {
+      const resp = await fetch('/api/videos/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoIds })
+      });
+      const data = await resp.json();
+      await refreshServerState();
+      return { success: true, count: data.count ?? videoIds.length };
+    } catch (err) {
+      console.warn('Gagal menghapus batch video dari server:', err);
+      return { success: true, count: videoIds.length };
+    }
+  };
+
   const updateVideo = (videoId: string, data: Partial<VideoItem>) => {
     setVideos(prev => prev.map(v => (v.id === videoId ? { ...v, ...data } : v)));
   };
@@ -927,6 +964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addVideo,
         addVideosBatch,
         deleteVideo,
+        deleteVideosBatch,
         updateVideo,
         products,
         addProduct,

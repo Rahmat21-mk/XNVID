@@ -25,6 +25,7 @@ interface StagedVideo {
   fileSizeMb: number;
   description: string;
   thumbnail: string;
+  middleTimestampFormatted?: string;
   videoUrl?: string;
   status: 'ready' | 'uploading' | 'done' | 'duplicate';
 }
@@ -41,7 +42,7 @@ const INDUSTRIAL_THUMBNAILS = [
 ];
 
 export const VideoManagement: React.FC = () => {
-  const { videos, addVideosBatch, deleteVideo } = useApp();
+  const { videos, addVideosBatch, deleteVideo, refreshServerState } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -91,28 +92,43 @@ export const VideoManagement: React.FC = () => {
     return titled;
   };
 
-  // Parsing durasi dari file video asli secara otomatis
+  // Parsing durasi dan ekstrak cuplikan menit pertengahan secara otomatis dari video asli
   const parseVideoMetadata = (file: File, indexOffset: number): Promise<StagedVideo> => {
     return new Promise((resolve) => {
       const videoElement = document.createElement('video');
       videoElement.preload = 'metadata';
+      videoElement.muted = true;
+      videoElement.playsInline = true;
       const objectUrl = URL.createObjectURL(file);
       videoElement.src = objectUrl;
 
-      const fallbackDuration = 300 + Math.floor(Math.random() * 600); // 5 - 15 menit (standar)
+      const fallbackDuration = 300 + Math.floor(Math.random() * 600); // 5 - 15 menit
       const sizeMb = Number((file.size / (1024 * 1024)).toFixed(1));
       const autoTitle = formatAutoTitle(file.name, indexOffset);
-      const thumb = INDUSTRIAL_THUMBNAILS[(videos.length + indexOffset) % INDUSTRIAL_THUMBNAILS.length];
+      const fallbackThumb = INDUSTRIAL_THUMBNAILS[(videos.length + indexOffset) % INDUSTRIAL_THUMBNAILS.length];
 
       // Cek apakah judul sudah pernah terdaftar di sistem
       const isDuplicate = videos.some(v => v.title.trim().toLowerCase() === autoTitle.toLowerCase());
 
+      let capturedThumbnail = '';
+      let middleTimeFormatted = '';
+      let isFinalized = false;
+
       const finalize = (durationSecs: number) => {
-        // Normalisasi batas durasi jika file demo/uji coba terlalu singkat/panjang
-        const safeDuration = durationSecs >= 60 ? Math.round(durationSecs) : fallbackDuration;
+        if (isFinalized) return;
+        isFinalized = true;
+
+        const safeDuration = durationSecs >= 5 ? Math.round(durationSecs) : fallbackDuration;
         const m = Math.floor(safeDuration / 60);
         const s = safeDuration % 60;
         const durFormatted = `${m}m ${String(s).padStart(2, '0')}d`;
+
+        if (!middleTimeFormatted) {
+          const midSec = Math.floor(safeDuration / 2);
+          const mm = Math.floor(midSec / 60);
+          const ss = midSec % 60;
+          middleTimeFormatted = `${mm}:${String(ss).padStart(2, '0')}`;
+        }
 
         resolve({
           file,
@@ -121,7 +137,8 @@ export const VideoManagement: React.FC = () => {
           durationFormatted: durFormatted,
           fileSizeMb: sizeMb > 0 ? sizeMb : Math.round(safeDuration * 0.35),
           description: `Modul pelatihan materi praktikum teknik industri: ${autoTitle}.`,
-          thumbnail: thumb,
+          thumbnail: capturedThumbnail || fallbackThumb,
+          middleTimestampFormatted: middleTimeFormatted,
           videoUrl: objectUrl,
           status: isDuplicate ? 'duplicate' : 'ready'
         });
@@ -129,21 +146,49 @@ export const VideoManagement: React.FC = () => {
 
       videoElement.onloadedmetadata = () => {
         const dur = videoElement.duration;
-        if (!isNaN(dur) && isFinite(dur) && dur > 0) {
-          finalize(dur);
-        } else {
-          finalize(fallbackDuration);
+        const validDuration = !isNaN(dur) && isFinite(dur) && dur > 0 ? dur : fallbackDuration;
+
+        // Ambil menit / detik pertengahan video (exact halfway mark)
+        const middleSecs = validDuration / 2;
+        const mm = Math.floor(middleSecs / 60);
+        const ss = Math.floor(middleSecs % 60);
+        middleTimeFormatted = `${mm}:${String(ss).padStart(2, '0')}`;
+
+        // Pindahkan pemutaran ke menit pertengahan untuk capture frame
+        try {
+          videoElement.currentTime = middleSecs;
+        } catch {
+          finalize(validDuration);
         }
+      };
+
+      videoElement.onseeked = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const width = videoElement.videoWidth || 640;
+          const height = videoElement.videoHeight || 360;
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(videoElement, 0, 0, width, height);
+            capturedThumbnail = canvas.toDataURL('image/jpeg', 0.85);
+          }
+        } catch (err) {
+          console.warn('Gagal menangkap frame thumbnail dari video:', err);
+        }
+        finalize(videoElement.duration || fallbackDuration);
       };
 
       videoElement.onerror = () => {
         finalize(fallbackDuration);
       };
 
-      // Timeout proteksi jika browser tidak mendukung decoding codec tertentu
+      // Timeout pengaman bila browser lambat render video
       setTimeout(() => {
         finalize(fallbackDuration);
-      }, 1200);
+      }, 3500);
     });
   };
 
@@ -180,7 +225,7 @@ export const VideoManagement: React.FC = () => {
     setFormError(null);
   };
 
-  // Eksekusi Unggah Batch ke Sistem
+  // Eksekusi Unggah Batch ke Sistem (Unggah file fisik & simpan thumbnail ke server)
   const handleExecuteBatchUpload = async () => {
     setFormError(null);
     setFormSuccess(null);
@@ -197,33 +242,77 @@ export const VideoManagement: React.FC = () => {
     }
 
     setIsUploading(true);
-    setUploadProgress(10);
-
-    // Animasi progress bar dinamis
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 90) return 90;
-        return prev + 20;
-      });
-    }, 400);
+    setUploadProgress(5);
 
     try {
-      const payload = validVideos.map(v => ({
-        title: v.title,
-        description: v.description,
-        durationSeconds: v.durationSeconds,
-        thumbnail: v.thumbnail,
-        fileSizeMb: v.fileSizeMb,
-        videoUrl: v.videoUrl
-      }));
+      const uploadedPayload: Array<{
+        title: string;
+        description: string;
+        durationSeconds: number;
+        thumbnail: string;
+        fileSizeMb: number;
+        videoUrl: string;
+      }> = [];
 
-      const res = await addVideosBatch(payload);
+      for (let i = 0; i < validVideos.length; i++) {
+        const v = validVideos[i];
 
-      clearInterval(interval);
+        // 1. Unggah file video fisik ke server
+        let persistentVideoUrl = v.videoUrl || '';
+        try {
+          const formData = new FormData();
+          formData.append('video', v.file);
+
+          const upRes = await fetch('/api/upload/video', {
+            method: 'POST',
+            body: formData
+          });
+          const upData = await upRes.json();
+          if (upData.success && upData.videoUrl) {
+            persistentVideoUrl = upData.videoUrl;
+          }
+        } catch (err) {
+          console.warn('Gagal unggah berkas video fisik, gunakan fallback URL:', err);
+        }
+
+        // 2. Simpan gambar thumbnail dari menit pertengahan ke server
+        let persistentThumbUrl = v.thumbnail;
+        if (v.thumbnail && v.thumbnail.startsWith('data:image/')) {
+          try {
+            const thumbRes = await fetch('/api/upload/thumbnail', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataUrl: v.thumbnail })
+            });
+            const thumbData = await thumbRes.json();
+            if (thumbData.success && thumbData.thumbnailUrl) {
+              persistentThumbUrl = thumbData.thumbnailUrl;
+            }
+          } catch (err) {
+            console.warn('Gagal unggah thumbnail ke server, fallback dataUrl:', err);
+          }
+        }
+
+        uploadedPayload.push({
+          title: v.title,
+          description: v.description,
+          durationSeconds: v.durationSeconds,
+          thumbnail: persistentThumbUrl,
+          fileSizeMb: v.fileSizeMb,
+          videoUrl: persistentVideoUrl
+        });
+
+        const percent = Math.min(95, Math.round(((i + 1) / validVideos.length) * 90) + 5);
+        setUploadProgress(percent);
+      }
+
+      // 3. Simpan seluruh video ke repositori sistem
+      const res = await addVideosBatch(uploadedPayload);
       setUploadProgress(100);
 
       if (res.success) {
-        setFormSuccess(`Berhasil mengunggah ${res.count} video pelatihan baru! Judul, durasi, dan spesifikasi telah terisi otomatis.`);
+        setFormSuccess(`Berhasil mengunggah ${res.count} video pelatihan! Gambar cuplikan diambil otomatis dari menit pertengahan video.`);
+        await refreshServerState();
         setTimeout(() => {
           setIsUploading(false);
           setIsUploadModalOpen(false);
@@ -236,7 +325,6 @@ export const VideoManagement: React.FC = () => {
         setFormError(res.error || 'Gagal menyimpan data video.');
       }
     } catch {
-      clearInterval(interval);
       setIsUploading(false);
       setFormError('Terjadi kesalahan saat mengunggah video.');
     }
@@ -558,14 +646,30 @@ export const VideoManagement: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center space-x-2.5 min-w-0 flex-1 mr-3">
-                          <div className="w-7 h-7 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-mono font-bold text-[11px] shrink-0">
-                            {idx + 1}
-                          </div>
+                          {staged.thumbnail ? (
+                            <div className="relative w-16 h-10 rounded-md overflow-hidden bg-slate-900 shrink-0 border border-slate-200">
+                              <img
+                                src={staged.thumbnail}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute bottom-0 inset-x-0 bg-black/75 text-[8px] text-white font-mono text-center py-0.5 font-bold">
+                                {staged.middleTimestampFormatted || 'Mid'}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-mono font-bold text-[11px] shrink-0">
+                              {idx + 1}
+                            </div>
+                          )}
                           <div className="min-w-0 flex-1">
                             <p className="font-bold truncate text-slate-900">{staged.title}</p>
                             <p className="text-[10px] text-slate-500 font-mono">
                               File: {staged.file.name} • {staged.durationFormatted} • {staged.fileSizeMb} MB
                             </p>
+                            <span className="inline-block mt-0.5 text-[9px] bg-blue-50 text-blue-700 font-medium px-1.5 py-0.2 rounded border border-blue-100">
+                              Cuplikan: Menit Pertengahan ({staged.middleTimestampFormatted || '00:00'})
+                            </span>
                           </div>
                         </div>
 

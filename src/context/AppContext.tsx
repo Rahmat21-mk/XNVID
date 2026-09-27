@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   User,
   VideoItem,
@@ -76,6 +76,7 @@ interface AppContextType {
     voucherCode?: string;
   }) => { success: boolean; order?: Order; error?: string };
   updateOrderStatus: (orderId: string, status: OrderStatus, trackingNote?: string, customTrackingCode?: string) => void;
+  refreshServerState: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -159,32 +160,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [vouchers] = useState<Voucher[]>(INITIAL_VOUCHERS);
 
-  // Sync state dari Server Sentral saat aplikasi dimuat
-  useEffect(() => {
-    fetch('/api/state')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.success) {
-          if (data.appSettings) setAppSettings(data.appSettings);
-          if (data.users && data.users.length > 0) {
-            setAllUsers(data.users);
-            if (currentUser) {
-              const fresh = data.users.find((u: User) => u.id === currentUser.id);
-              if (fresh) setCurrentUser(fresh);
-            }
-          }
-          if (data.videos) setVideos(data.videos);
-          if (data.products) setProducts(data.products);
-          if (data.orders) setOrders(data.orders);
-          if (data.watchLogs) setWatchLogs(data.watchLogs);
-          if (data.deliveryServices) setDeliveryServices(data.deliveryServices);
-          if (data.paymentSettings) setPaymentSettings(data.paymentSettings);
+  // Fungsi sinkronisasi data menyeluruh dari Server Sentral
+  const refreshServerState = useCallback(async () => {
+    try {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      if (data && data.success) {
+        if (data.appSettings) setAppSettings(data.appSettings);
+        if (data.users && data.users.length > 0) {
+          setAllUsers(data.users);
+          setCurrentUser(prevUser => {
+            if (!prevUser) return null;
+            const fresh = data.users.find((u: User) => u.id === prevUser.id);
+            return fresh || prevUser;
+          });
         }
-      })
-      .catch(err => {
-        console.warn('Sinkronisasi server dialihkan ke offline mode:', err);
-      });
+        if (data.videos) setVideos(data.videos);
+        if (data.products) setProducts(data.products);
+        if (data.orders) setOrders(data.orders);
+        if (data.watchLogs) setWatchLogs(data.watchLogs);
+        if (data.deliveryServices) setDeliveryServices(data.deliveryServices);
+        if (data.paymentSettings) setPaymentSettings(data.paymentSettings);
+      }
+    } catch (err) {
+      console.warn('Gagal sinkronisasi data dari server:', err);
+    }
   }, []);
+
+  // Sync saat aplikasi dimuat & polling otomatis berkala (setiap 6 detik)
+  // agar saat admin mengunggah video, akun peserta langsung melihat video secara real-time
+  useEffect(() => {
+    refreshServerState();
+    const interval = setInterval(refreshServerState, 6000);
+    return () => clearInterval(interval);
+  }, [refreshServerState]);
 
   // Sync ke local storage untuk cadangan offline
   useEffect(() => {
@@ -251,6 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.success && data.user) {
         setCurrentUser(data.user);
         setAllUsers(prev => [...prev.filter(u => u.id !== data.user.id), data.user]);
+        refreshServerState();
         return { success: true };
       } else if (resp.status !== 500) {
         return { success: false, error: data.error || 'ID Peserta tidak ditemukan.' };
@@ -607,6 +617,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await resp.json();
       if (data.success) {
+        await refreshServerState();
         return { success: true, count: data.count || newItems.length };
       }
     } catch (e) {
@@ -933,7 +944,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateDeliveryServices,
         updatePaymentSettings,
         createOrder,
-        updateOrderStatus
+        updateOrderStatus,
+        refreshServerState
       }}
     >
       {children}

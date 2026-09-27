@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Play,
   Clock,
   CheckCircle,
   BookOpen,
   ChevronRight,
-  Video
+  Video,
+  RefreshCw
 } from 'lucide-react';
 import { VideoItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -16,9 +17,20 @@ interface TraineeDashboardProps {
 }
 
 export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ searchQuery }) => {
-  const { videos, currentUser, watchLogs } = useApp();
+  const { videos, currentUser, watchLogs, refreshServerState } = useApp();
 
   const [activeVideo, setActiveVideo] = useState<VideoItem | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshServerState();
+  }, [refreshServerState]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshServerState();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Filter video berdasarkan pencarian judul / deskripsi (tanpa kategori)
   const filteredVideos = videos.filter(v => {
@@ -143,6 +155,14 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ searchQuery 
               ? 'Administrator sedang mempersiapkan modul video pelatihan baru. Video pembelajaran akan segera muncul di sini begitu diunggah.'
               : 'Tidak ada modul video yang sesuai dengan kata kunci pencarian Anda. Coba kata kunci yang lain.'}
           </p>
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="mt-4 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold inline-flex items-center space-x-1.5 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{isRefreshing ? 'Memperbarui...' : 'Periksa Video Terbaru'}</span>
+          </button>
         </div>
       )}
 

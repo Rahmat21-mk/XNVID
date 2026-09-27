@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 import {
   INITIAL_APP_SETTINGS,
   INITIAL_VIDEOS,
@@ -42,6 +43,32 @@ interface ServerDbState {
 
 const DATA_DIR = path.resolve(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'app_state.json');
+
+// Direktori untuk penyimpanan berkas unggahan nyata (video dan thumbnail hasil tangkapan)
+const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
+const VIDEOS_UPLOAD_DIR = path.join(UPLOADS_DIR, 'videos');
+const THUMBS_UPLOAD_DIR = path.join(UPLOADS_DIR, 'thumbnails');
+
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(VIDEOS_UPLOAD_DIR)) fs.mkdirSync(VIDEOS_UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(THUMBS_UPLOAD_DIR)) fs.mkdirSync(THUMBS_UPLOAD_DIR, { recursive: true });
+
+const videoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, VIDEOS_UPLOAD_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.mp4';
+    const cleanBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const unique = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    cb(null, `${cleanBase}_${unique}${ext}`);
+  }
+});
+
+const uploadVideo = multer({
+  storage: videoStorage,
+  limits: { fileSize: 1024 * 1024 * 500 } // batas hingga 500MB
+});
 
 // Akun admin resmi tunggal yang permanen
 const DEFAULT_PERMANENT_ADMIN: User = {
@@ -114,9 +141,49 @@ async function startServer() {
 
   let db = loadDatabase();
 
-  app.use(express.json({ limit: '15mb' }));
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+  // Static serving untuk folder uploads agar video dan thumbnail frame dapat diakses oleh semua peserta
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // ================= API ENDPOINTS =================
+
+  // 0. Unggah Berkas Video Asli ke Server
+  app.post('/api/upload/video', uploadVideo.single('video'), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Tidak ada file video yang dikirim.' });
+    }
+    const videoUrl = `/uploads/videos/${req.file.filename}`;
+    res.json({
+      success: true,
+      videoUrl,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+  });
+
+  // 0b. Unggah Gambar Cuplikan (Thumbnail dari menit pertengahan)
+  app.post('/api/upload/thumbnail', (req, res) => {
+    const { dataUrl } = req.body;
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+      return res.status(400).json({ success: false, error: 'Data gambar thumbnail tidak valid.' });
+    }
+    try {
+      const matches = dataUrl.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).json({ success: false, error: 'Format data URL tidak valid.' });
+      }
+      const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      const filename = `thumb_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`;
+      const filePath = path.join(THUMBS_UPLOAD_DIR, filename);
+      fs.writeFileSync(filePath, buffer);
+      res.json({ success: true, thumbnailUrl: `/uploads/thumbnails/${filename}` });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Gagal menyimpan thumbnail.' });
+    }
+  });
 
   // 1. Ambil seluruh state tersentralisasi
   app.get('/api/state', (req, res) => {

@@ -19,38 +19,98 @@ interface VideoPlayerModalProps {
 export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClose }) => {
   const { recordDiscreetWatchProgress } = useApp();
 
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(video ? video.durationSeconds : 60);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'notes'>('overview');
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   const prevTimeRef = useRef<number>(0);
 
-  // Pemantauan durasi tonton aktif secara tersembunyi (discreet)
+  // Set initial duration from video metadata
   useEffect(() => {
-    if (!video || !isPlaying) return;
+    if (video) {
+      setDuration(video.durationSeconds || 60);
+      setCurrentTime(0);
+      setIsPlaying(false);
+      setVideoError(null);
+    }
+  }, [video]);
 
-    const interval = setInterval(() => {
-      setCurrentTime((prev) => {
-        if (prev >= video.durationSeconds) {
-          setIsPlaying(false);
-          return video.durationSeconds;
-        }
-
-        const nextTime = Math.min(video.durationSeconds, prev + 1 * playbackSpeed);
-        const isSkip = Math.abs(nextTime - prevTimeRef.current) > 4;
-        prevTimeRef.current = nextTime;
-
-        // Catat penambahan durasi tonton secara tersembunyi untuk penilaian
-        recordDiscreetWatchProgress(video.id, 1 * playbackSpeed, nextTime, isSkip);
-
-        return nextTime;
+  // Handle Play/Pause
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch(err => {
+        console.warn('Pemutaran video dicegah oleh browser atau format tidak didukung:', err);
       });
-    }, 1000);
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, [isPlaying, video, playbackSpeed, recordDiscreetWatchProgress]);
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      const dur = videoRef.current.duration;
+      if (!isNaN(dur) && isFinite(dur) && dur > 0) {
+        setDuration(Math.round(dur));
+      }
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (!videoRef.current || !video) return;
+    const cur = videoRef.current.currentTime;
+    setCurrentTime(cur);
+
+    const isSkip = Math.abs(cur - prevTimeRef.current) > 3;
+    const increment = Math.max(0, cur - prevTimeRef.current);
+    prevTimeRef.current = cur;
+
+    if (isPlaying && increment > 0 && increment < 5) {
+      recordDiscreetWatchProgress(video.id, increment, cur, isSkip);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const target = Number(e.target.value);
+    setCurrentTime(target);
+    if (videoRef.current) {
+      videoRef.current.currentTime = target;
+    }
+    prevTimeRef.current = target;
+    if (video) {
+      recordDiscreetWatchProgress(video.id, 0, target, true);
+    }
+  };
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      containerRef.current.requestFullscreen().catch(() => {});
+    }
+  };
 
   if (!video) return null;
 
@@ -60,14 +120,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const target = Number(e.target.value);
-    recordDiscreetWatchProgress(video.id, 0, target, true);
-    setCurrentTime(target);
-    prevTimeRef.current = target;
-  };
-
-  const progressPercent = Math.min(100, (currentTime / video.durationSeconds) * 100);
+  const progressPercent = Math.min(100, (currentTime / (duration || 1)) * 100);
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center p-2.5 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
@@ -76,7 +129,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
         <div className="bg-[#0A192F] px-5 py-3 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-2.5 overflow-hidden">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white shrink-0">
-              {video.category}
+              {video.category || 'Materi Praktik'}
             </span>
             <h3 className="font-bold text-sm truncate text-slate-100">
               {video.title}
@@ -90,53 +143,79 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
           </button>
         </div>
 
-        {/* Layar Simulasi Video */}
-        <div className="relative bg-slate-950 aspect-video w-full flex items-center justify-center overflow-hidden group">
-          <img
-            src={video.thumbnail}
-            alt={video.title}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              isPlaying ? 'opacity-40' : 'opacity-70'
-            }`}
-          />
+        {/* Layar Pemutar Video Asli */}
+        <div ref={containerRef} className="relative bg-slate-950 aspect-video w-full flex items-center justify-center overflow-hidden group">
+          {video.videoUrl ? (
+            <video
+              ref={videoRef}
+              src={video.videoUrl}
+              poster={video.thumbnail}
+              className="w-full h-full object-contain cursor-pointer"
+              playsInline
+              onClick={togglePlay}
+              onLoadedMetadata={handleLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+              onError={() => {
+                setVideoError('Format berkas video tidak dapat diputar langsung di peramban ini atau tautan kadaluarsa.');
+              }}
+            />
+          ) : (
+            <img
+              src={video.thumbnail}
+              alt={video.title}
+              className="w-full h-full object-cover opacity-80"
+            />
+          )}
+
+          {/* Pesan Kesalahan jika Video gagal dimuat */}
+          {videoError && (
+            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center p-6 text-center text-white z-20">
+              <p className="text-xs text-rose-400 font-semibold mb-2">{videoError}</p>
+              <p className="text-[11px] text-slate-300 max-w-sm">
+                Gambar cuplikan awal tetap ditampilkan dari menit pertengahan video. Administrator dapat mengunggah kembali video dengan format MP4/WebM standar H.264.
+              </p>
+            </div>
+          )}
 
           {/* Overlay Kontrol Video */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none flex flex-col justify-between p-4">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none flex flex-col justify-between p-4 transition-opacity group-hover:opacity-100 opacity-90">
             <div className="flex justify-between items-start text-[11px] font-mono text-slate-300">
               <span className="bg-black/60 px-2 py-0.5 rounded backdrop-blur-xs flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse mr-1.5" />
-                STREAM HD 1080P
+                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isPlaying ? 'bg-red-500 animate-pulse' : 'bg-slate-400'}`} />
+                {isPlaying ? 'MEMUTAR VIDEO AKTIF' : 'SIAP DIPUTAR'}
               </span>
               <span className="bg-black/60 px-2 py-0.5 rounded backdrop-blur-xs">
-                {video.id}
+                Ref: {video.id}
               </span>
             </div>
 
-            {/* Tombol Play/Pause Tengah */}
-            <div className="flex flex-col items-center justify-center my-auto pointer-events-auto">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="w-14 h-14 rounded-full bg-blue-600/90 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg transition active:scale-95"
-              >
-                {isPlaying ? (
-                  <Pause className="w-7 h-7 fill-current" />
-                ) : (
-                  <Play className="w-7 h-7 fill-current ml-1" />
-                )}
-              </button>
-            </div>
+            {/* Tombol Play/Pause Tengah (muncul saat pause) */}
+            {!isPlaying && !videoError && (
+              <div className="flex flex-col items-center justify-center my-auto pointer-events-auto">
+                <button
+                  onClick={togglePlay}
+                  className="w-16 h-16 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-xl transition transform hover:scale-105 active:scale-95"
+                >
+                  <Play className="w-8 h-8 fill-current ml-1" />
+                </button>
+              </div>
+            )}
 
             <div className="text-right text-xs text-slate-300 font-mono">
-              {formatSeconds(currentTime)} / {video.durationFormatted}
+              {formatSeconds(currentTime)} / {formatSeconds(duration)}
             </div>
           </div>
 
           {/* Bar Kontrol Bawah */}
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent p-3 pt-5 flex flex-col space-y-1.5">
+          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent p-3 pt-5 flex flex-col space-y-1.5 z-10">
             <input
               type="range"
               min={0}
-              max={video.durationSeconds}
+              max={duration || 60}
+              step={0.5}
               value={currentTime}
               onChange={handleSeek}
               className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:h-2 transition-all"
@@ -144,38 +223,48 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClo
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-white text-xs">
               <div className="flex items-center space-x-2 sm:space-x-2.5">
-                <button onClick={() => setIsPlaying(!isPlaying)} className="p-1 hover:text-blue-400">
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                <button onClick={togglePlay} className="p-1 hover:text-blue-400 transition" title={isPlaying ? 'Jeda' : 'Putar'}>
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
                 </button>
                 <button
                   onClick={() => {
                     setCurrentTime(0);
+                    if (videoRef.current) videoRef.current.currentTime = 0;
                     prevTimeRef.current = 0;
                   }}
-                  className="p-1 hover:text-blue-400"
-                  title="Ulangi"
+                  className="p-1 hover:text-blue-400 transition"
+                  title="Ulangi dari Awal"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => setIsMuted(!isMuted)} className="p-1 hover:text-blue-400">
+                <button onClick={toggleMute} className="p-1 hover:text-blue-400 transition" title={isMuted ? 'Nyalakan Suara' : 'Bisukan'}>
                   {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
                 <span className="font-mono text-[10px] sm:text-[11px] text-slate-300">
-                  {formatSeconds(currentTime)} / {video.durationFormatted}
+                  {formatSeconds(currentTime)} / {formatSeconds(duration)}
                 </span>
               </div>
 
               <div className="flex items-center space-x-2">
                 <select
                   value={playbackSpeed}
-                  onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] sm:text-[11px] rounded px-1.5 py-0.5 focus:outline-none"
+                  onChange={(e) => handleSpeedChange(Number(e.target.value))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 text-[10px] sm:text-[11px] rounded px-1.5 py-0.5 focus:outline-none cursor-pointer"
                 >
                   <option value={0.75}>0.75x</option>
                   <option value={1}>1.0x Normal</option>
                   <option value={1.25}>1.25x</option>
                   <option value={1.5}>1.5x</option>
+                  <option value={2}>2.0x Cepat</option>
                 </select>
+
+                <button
+                  onClick={toggleFullscreen}
+                  className="p-1 hover:text-blue-400 transition"
+                  title="Layar Penuh"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
 
                 <div className="w-12 sm:w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
                   <div className="bg-blue-500 h-full" style={{ width: `${progressPercent}%` }} />

@@ -462,7 +462,7 @@ export const VideoManagement: React.FC = () => {
           <div className="flex items-center space-x-2 text-[11px] font-mono shrink-0">
             <span className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center">
               <Layers className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
-              Batch Min. 4 Video
+              Upload Fleksibel (1 - 200 Video)
             </span>
             <span className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center">
               <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-400" />

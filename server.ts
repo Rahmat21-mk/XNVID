@@ -109,14 +109,13 @@ function loadDatabase(): ServerDbState {
         }
       }
 
-      // Pastikan selalu ada modul video pelatihan untuk peserta
-      if (!Array.isArray(parsed.videos) || parsed.videos.length === 0) {
-        parsed.videos = INITIAL_VIDEOS;
+      // Pastikan videos dan products berupa array murni dari data admin
+      if (!Array.isArray(parsed.videos)) {
+        parsed.videos = [];
       }
 
-      // Pastikan selalu ada produk peralatan praktik untuk peserta
-      if (!Array.isArray(parsed.products) || parsed.products.length === 0) {
-        parsed.products = INITIAL_PRODUCTS;
+      if (!Array.isArray(parsed.products)) {
+        parsed.products = [];
       }
 
       saveDatabase(parsed);
@@ -126,12 +125,12 @@ function loadDatabase(): ServerDbState {
     console.error('Error loading database file, initializing clean state:', err);
   }
 
-  // Database awal lengkap dengan 20 modul video industri dan katalog alat bersertifikat
+  // Database awal bersih: TANPA video dummy/simulasi dan TANPA produk dummy
   const initialState: ServerDbState = {
     adminUser: DEFAULT_PERMANENT_ADMIN,
     users: INITIAL_USERS,
-    videos: INITIAL_VIDEOS,
-    products: INITIAL_PRODUCTS,
+    videos: [],
+    products: [],
     deliveryServices: INITIAL_DELIVERY_SERVICES,
     paymentSettings: INITIAL_PAYMENT_SETTINGS,
     appSettings: INITIAL_APP_SETTINGS,
@@ -170,16 +169,22 @@ async function startServer() {
   // ================= API ENDPOINTS =================
 
   // 0. Unggah Berkas Video Asli ke Server
-  app.post('/api/upload/video', uploadVideo.single('video'), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'Tidak ada file video yang dikirim.' });
-    }
-    const videoUrl = `/uploads/videos/${req.file.filename}`;
-    res.json({
-      success: true,
-      videoUrl,
-      filename: req.file.originalname,
-      size: req.file.size
+  app.post('/api/upload/video', (req, res) => {
+    uploadVideo.single('video')(req, res, (err: any) => {
+      if (err) {
+        console.error('Multer video upload error:', err);
+        return res.status(400).json({ success: false, error: err.message || 'Gagal mengunggah berkas video.' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'Tidak ada file video yang dikirim.' });
+      }
+      const videoUrl = `/uploads/videos/${req.file.filename}`;
+      res.json({
+        success: true,
+        videoUrl,
+        filename: req.file.originalname,
+        size: req.file.size
+      });
     });
   });
 

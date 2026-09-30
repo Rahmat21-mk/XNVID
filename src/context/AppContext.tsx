@@ -129,12 +129,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {
         console.error(e);
       }
     }
-    return INITIAL_VIDEOS;
+    return [];
   });
 
   const [products, setProducts] = useState<ProductItem[]>(() => {
@@ -142,12 +142,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {
         console.error(e);
       }
     }
-    return INITIAL_PRODUCTS;
+    return [];
   });
 
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -193,10 +193,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
         if (data.videos) {
-          setVideos(Array.isArray(data.videos) && data.videos.length > 0 ? data.videos : INITIAL_VIDEOS);
+          setVideos(Array.isArray(data.videos) ? data.videos : []);
         }
         if (data.products) {
-          setProducts(Array.isArray(data.products) && data.products.length > 0 ? data.products : INITIAL_PRODUCTS);
+          setProducts(Array.isArray(data.products) ? data.products : []);
         }
         if (data.orders) setOrders(data.orders);
         if (data.watchLogs) setWatchLogs(data.watchLogs);

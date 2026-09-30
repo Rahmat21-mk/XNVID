@@ -17,12 +17,14 @@ import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 
 export const ProductManagement: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct, refreshServerState } = useApp();
+  const { products, addProduct, updateProduct, deleteProduct, refreshServerState, syncMasterStateToServer } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [syncAlert, setSyncAlert] = useState<string | null>(null);
 
   useEffect(() => {
     refreshServerState();
@@ -32,6 +34,24 @@ export const ProductManagement: React.FC = () => {
     setIsRefreshing(true);
     await refreshServerState();
     setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const handleSyncProductsToCloud = async () => {
+    setIsSyncingCloud(true);
+    setSyncAlert(null);
+    try {
+      const res = await syncMasterStateToServer({ products });
+      if (res?.success) {
+        setSyncAlert(`Berhasil menyinkronkan seluruh ${products.length} produk ke Cloud Firestore!`);
+      } else {
+        setSyncAlert('Gagal sinkronisasi produk ke database cloud.');
+      }
+    } catch {
+      setSyncAlert('Gagal menghubungkan ke database cloud.');
+    } finally {
+      setIsSyncingCloud(false);
+      setTimeout(() => setSyncAlert(null), 5000);
+    }
   };
 
   // Form Fields: nama produk, harga asli (Rupiah), persentase diskon, kuantitas (stok), bobot, dan deskripsi
@@ -164,6 +184,17 @@ export const ProductManagement: React.FC = () => {
         <div className="flex items-center space-x-2 shrink-0">
           <button
             type="button"
+            onClick={handleSyncProductsToCloud}
+            disabled={isSyncingCloud}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs flex items-center transition space-x-1.5 cursor-pointer disabled:opacity-70"
+            title="Kirim dan sinkronkan semua produk ke Cloud Firestore agar langsung muncul di HP"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Menyinkronkan...' : 'Sinkronkan Produk ke HP'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleManualRefresh}
             disabled={isRefreshing}
             className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-xs flex items-center transition space-x-1.5 cursor-pointer"
@@ -181,6 +212,13 @@ export const ProductManagement: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {syncAlert && (
+        <div className="bg-emerald-600 text-white text-xs font-semibold py-2 px-4 rounded-xl flex items-center space-x-2 animate-in fade-in duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+          <span>{syncAlert}</span>
+        </div>
+      )}
 
       {/* Kolom Pencarian */}
       <div className="relative">

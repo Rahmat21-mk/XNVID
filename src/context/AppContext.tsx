@@ -25,6 +25,23 @@ import {
   INITIAL_WATCH_LOGS,
   INITIAL_ORDERS
 } from '../data/seedData';
+import {
+  subscribeToCloudDatabase,
+  saveVideoToCloud,
+  saveVideosBatchToCloud,
+  deleteVideoFromCloud,
+  deleteVideosBatchFromCloud,
+  saveProductToCloud,
+  saveProductsBatchToCloud,
+  deleteProductFromCloud,
+  saveSettingsToCloud,
+  saveUserToCloud,
+  deleteUserFromCloud,
+  saveOrderToCloud,
+  recordWatchLogToCloud,
+  syncFullStateToCloud
+} from '../services/firestoreSync';
+import { testFirebaseConnection } from '../firebase';
 
 interface AppContextType {
   currentUser: User | null;
@@ -168,10 +185,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [vouchers] = useState<Voucher[]>(INITIAL_VOUCHERS);
 
-  // Status push awal agar data yang ada di laptop langsung tersimpan di server
+  // Status push awal agar data yang ada di laptop langsung tersimpan di server & Cloud
   const initialMasterSyncPushedRef = useRef(false);
 
-  // Fungsi sinkronisasi master: mendorong data saat ini ke server sentral untuk disimpan permanen
+  // 1. Hubungkan ke Cloud Firestore secara Real-Time ke seluruh HP, Laptop & Tablet
+  useEffect(() => {
+    testFirebaseConnection();
+    const unsubscribe = subscribeToCloudDatabase({
+      onVideos: (cloudVideos) => {
+        if (cloudVideos && cloudVideos.length > 0) {
+          setVideos(cloudVideos);
+        }
+      },
+      onProducts: (cloudProducts) => {
+        if (cloudProducts && cloudProducts.length > 0) {
+          setProducts(cloudProducts);
+        }
+      },
+      onUsers: (cloudUsers) => {
+        if (cloudUsers && cloudUsers.length > 0) {
+          setAllUsers(cloudUsers);
+          setCurrentUser(prevUser => {
+            if (!prevUser) return null;
+            const fresh = cloudUsers.find(u => u.id === prevUser.id);
+            return fresh || prevUser;
+          });
+        }
+      },
+      onOrders: (cloudOrders) => {
+        if (cloudOrders) {
+          setOrders(cloudOrders);
+        }
+      },
+      onSettings: (data) => {
+        if (data.appSettings) setAppSettings(data.appSettings);
+        if (data.paymentSettings) setPaymentSettings(data.paymentSettings);
+        if (data.deliveryServices) setDeliveryServices(data.deliveryServices);
+      },
+      onWatchLogs: (logs) => {
+        if (logs) setWatchLogs(logs);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Auto-push: Jika browser lokal (laptop) memiliki video/produk yang belum ada di Cloud Firestore,
+  // kirimkan otomatis ke Cloud Firestore!
+  useEffect(() => {
+    const pushLocalToCloud = async () => {
+      try {
+        const rawVids = localStorage.getItem('xnvd_videos');
+        const rawProds = localStorage.getItem('xnvd_products');
+        const rawSettings = localStorage.getItem('xnvd_appSettings');
+        let localVids: VideoItem[] = [];
+        let localProds: ProductItem[] = [];
+        let localSettings: AppSettings | null = null;
+        if (rawVids) {
+          try { localVids = JSON.parse(rawVids); } catch {}
+        }
+        if (rawProds) {
+          try { localProds = JSON.parse(rawProds); } catch {}
+        }
+        if (rawSettings) {
+          try { localSettings = JSON.parse(rawSettings); } catch {}
+        }
+
+        if (localVids.length > 0 || localProds.length > 0 || localSettings) {
+          await syncFullStateToCloud({
+            videos: localVids.length > 0 ? localVids : undefined,
+            products: localProds.length > 0 ? localProds : undefined,
+            appSettings: localSettings || undefined
+          });
+        }
+      } catch (err) {
+        console.warn('Initial push to Cloud Firestore error:', err);
+      }
+    };
+    pushLocalToCloud();
+  }, []);
+
+  // Fungsi sinkronisasi master: mendorong data saat ini ke Google Cloud Firestore & server
   const syncMasterStateToServer = useCallback(async (overrideData?: any) => {
     try {
       const payload = {
@@ -186,15 +280,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminUser: currentUser?.role === 'admin' ? currentUser : undefined
       };
 
-      const res = await fetch('/api/state/sync-master', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const resData = await res.json();
-      return resData;
+      // 1. Simpan langsung ke Google Cloud Firestore (dapat diakses seluruh HP, Laptop, Vercel, dll.)
+      const cloudRes = await syncFullStateToCloud(payload);
+
+      // 2. Simpan juga ke Express server sentral jika rute aktif
+      try {
+        await fetch('/api/state/sync-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {}
+
+      return {
+        success: true,
+        message: 'Data berhasil disinkronkan ke Cloud Firestore dan seluruh perangkat (HP, Laptop, Tablet).'
+      };
     } catch (err: any) {
-      console.warn('Gagal sync master state ke server:', err);
+      console.warn('Gagal sync master state:', err);
       return { success: false, error: err?.message || 'Gagal sinkronisasi data.' };
     }
   }, [appSettings, paymentSettings, deliveryServices, products, videos, allUsers, orders, watchLogs, currentUser]);
@@ -396,6 +499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const resData = await resp.json();
       if (resData.success && resData.user) {
         setAllUsers(prev => [...prev.filter(u => u.id !== resData.user.id), resData.user]);
+        saveUserToCloud(resData.user);
         setCurrentUser(resData.user);
         await refreshServerState();
         return { success: true, generatedId: resData.generatedId };
@@ -470,6 +574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (resData.success && resData.user) {
         setCurrentUser(resData.user);
         setAllUsers(prev => [resData.user, ...prev.filter(u => u.role !== 'admin')]);
+        saveUserToCloud(resData.user);
         return { success: true };
       }
       return { success: false, error: resData.error || 'Gagal mengubah kata sandi.' };
@@ -487,6 +592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setCurrentUser(updatedAdmin);
       setAllUsers(prev => [updatedAdmin, ...prev.filter(u => u.role !== 'admin')]);
+      saveUserToCloud(updatedAdmin);
       return { success: true };
     }
   };
@@ -512,7 +618,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Server sync error on reset ID:', e);
     }
 
-    setAllUsers(prev => prev.map(u => (u.id === oldId ? { ...u, id: cleanNew } : u)));
+    setAllUsers(prev => prev.map(u => {
+      if (u.id === oldId) {
+        const updatedU = { ...u, id: cleanNew };
+        saveUserToCloud(updatedU);
+        deleteUserFromCloud(oldId);
+        return updatedU;
+      }
+      return u;
+    }));
 
     setWatchLogs(prev => {
       if (prev[oldId]) {
@@ -544,6 +658,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return; // Akun admin tidak boleh dihapus
     }
 
+    deleteUserFromCloud(userId);
     fetch(`/api/participants/${userId}`, { method: 'DELETE' }).catch(() => {});
     setAllUsers(prev => prev.filter(u => u.id !== userId));
     setWatchLogs(prev => {
@@ -586,7 +701,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           completionCount: initialWatched >= durSecs * 0.85 ? 1 : 0,
           seekSkipsDetected: isSkipped ? 1 : 0
         };
-        return { ...prev, [traineeId]: [...userLogs, newLog] };
+        const updatedList = [...userLogs, newLog];
+        recordWatchLogToCloud(traineeId, updatedList);
+        return { ...prev, [traineeId]: updatedList };
       } else {
         const current = userLogs[logIndex];
         const newWatched = Math.min(durSecs, current.watchedSeconds + watchedSecondsIncrement);
@@ -598,6 +715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           seekSkipsDetected: isSkipped ? current.seekSkipsDetected + 1 : current.seekSkipsDetected,
           completionCount: newWatched >= durSecs * 0.85 && current.completionCount === 0 ? 1 : current.completionCount
         };
+        recordWatchLogToCloud(traineeId, userLogs);
         return { ...prev, [traineeId]: userLogs };
       }
     });
@@ -640,6 +758,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setVideos(prev => [newVideo, ...prev]);
+    saveVideoToCloud(newVideo);
     try {
       await fetch('/api/videos', {
         method: 'POST',
@@ -682,6 +801,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     setVideos(prev => [...newItems, ...prev]);
+    saveVideosBatchToCloud(newItems);
 
     try {
       const resp = await fetch('/api/videos/batch', {
@@ -693,13 +813,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshServerState();
       return { success: true, count: data.count || newItems.length };
     } catch (e) {
-      console.warn('Server offline saat batch upload, tersimpan di lokal:', e);
+      console.warn('Server offline saat batch upload, tersimpan di lokal & Cloud Firestore:', e);
       return { success: true, count: newItems.length };
     }
   };
 
   const deleteVideo = async (videoId: string) => {
     setVideos(prev => prev.filter(v => v.id !== videoId));
+    deleteVideoFromCloud(videoId);
     try {
       await fetch(`/api/videos/${videoId}`, { method: 'DELETE' });
       await refreshServerState();
@@ -712,6 +833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (deleteAll) {
       const count = videos.length;
       setVideos([]);
+      deleteVideosBatchFromCloud([], true);
       try {
         await fetch('/api/videos/batch-delete', {
           method: 'POST',
@@ -728,6 +850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!videoIds || videoIds.length === 0) return { success: true, count: 0 };
     const idsSet = new Set(videoIds);
     setVideos(prev => prev.filter(v => !idsSet.has(v.id)));
+    deleteVideosBatchFromCloud(videoIds, false);
 
     try {
       const resp = await fetch('/api/videos/batch-delete', {
@@ -745,7 +868,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateVideo = (videoId: string, data: Partial<VideoItem>) => {
-    setVideos(prev => prev.map(v => (v.id === videoId ? { ...v, ...data } : v)));
+    setVideos(prev => prev.map(v => {
+      if (v.id === videoId) {
+        const updated = { ...v, ...data };
+        saveVideoToCloud(updated);
+        return updated;
+      }
+      return v;
+    }));
   };
 
   // 8. Kelola Produk
@@ -763,6 +893,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProducts(prev => [newProduct, ...prev]);
+    saveProductToCloud(newProduct);
     try {
       await fetch('/api/products', {
         method: 'POST',
@@ -785,11 +916,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const disc = data.discountPercentage !== undefined ? data.discountPercentage : p.discountPercentage;
           const finalPrice = Math.max(0, original - original * (disc / 100));
 
-          return {
+          const updated = {
             ...p,
             ...data,
             finalPrice: Number(finalPrice.toFixed(2))
           };
+          saveProductToCloud(updated);
+          return updated;
         }
         return p;
       })
@@ -809,6 +942,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProduct = async (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
+    deleteProductFromCloud(productId);
     try {
       await fetch(`/api/products/${productId}`, { method: 'DELETE' });
       await refreshServerState();
@@ -854,7 +988,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 10. Pengaturan Aplikasi & Pembayaran
   const updateAppSettings = async (newSettings: Partial<AppSettings>) => {
-    setAppSettings(prev => ({ ...prev, ...newSettings }));
+    const updated = { ...appSettings, ...newSettings };
+    setAppSettings(updated);
+    saveSettingsToCloud({ appSettings: updated });
     try {
       await fetch('/api/settings/app', {
         method: 'POST',
@@ -869,6 +1005,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateDeliveryServices = async (services: DeliveryServiceConfig[]) => {
     setDeliveryServices(services);
+    saveSettingsToCloud({ deliveryServices: services });
     try {
       await fetch('/api/settings/delivery', {
         method: 'POST',
@@ -882,7 +1019,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updatePaymentSettings = async (settings: Partial<PaymentSettings>) => {
-    setPaymentSettings(prev => ({ ...prev, ...settings }));
+    const updated = { ...paymentSettings, ...settings };
+    setPaymentSettings(updated);
+    saveSettingsToCloud({ paymentSettings: updated });
     try {
       await fetch('/api/settings/payment', {
         method: 'POST',
@@ -993,12 +1132,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setOrders(prev => [newOrder, ...prev]);
+    saveOrderToCloud(newOrder);
 
     // Kurangi stok produk
     setProducts(prev =>
       prev.map(p => {
         const item = cart.find(c => c.product.id === p.id);
-        return item ? { ...p, quantity: Math.max(0, p.quantity - item.quantity) } : p;
+        const updatedProd = item ? { ...p, quantity: Math.max(0, p.quantity - item.quantity) } : p;
+        if (item) saveProductToCloud(updatedProd);
+        return updatedProd;
       })
     );
 
@@ -1030,12 +1172,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             timestamp: new Date().toISOString(),
             completed: true
           });
-          return {
+          const updatedOrd = {
             ...o,
             status,
             trackingNumber: customTrackingCode || o.trackingNumber,
             trackingSteps: updatedSteps
           };
+          saveOrderToCloud(updatedOrd);
+          return updatedOrd;
         }
         return o;
       })

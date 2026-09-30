@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Koleksi modul video pelatihan untuk seluruh peserta & admin
+    match /videos/{videoId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Koleksi katalog produk peralatan praktikum
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Koleksi akun admin dan peserta 6-digit
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Koleksi riwayat transaksi & resi ekspedisi
+    match /orders/{orderId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Pemantauan durasi tonton peserta
+    match /watchLogs/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Pengaturan master aplikasi, pembayaran, dan ekspedisi
+    match /system/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

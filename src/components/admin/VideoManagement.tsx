@@ -45,11 +45,12 @@ const INDUSTRIAL_THUMBNAILS = [
 ];
 
 export const VideoManagement: React.FC = () => {
-  const { videos, addVideosBatch, deleteVideo, deleteVideosBatch, refreshServerState } = useApp();
+  const { videos, addVideosBatch, deleteVideo, deleteVideosBatch, refreshServerState, syncMasterStateToServer } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<VideoItem | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   // Seleksi video massal untuk penghapusan
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
@@ -77,6 +78,27 @@ export const VideoManagement: React.FC = () => {
     setIsRefreshing(true);
     await refreshServerState();
     setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const handleSyncToCloudNow = async () => {
+    setIsSyncingCloud(true);
+    setActionAlert(null);
+    try {
+      const res = await syncMasterStateToServer({ videos });
+      if (res?.success) {
+        setActionAlert({
+          type: 'success',
+          message: `Berhasil menyinkronkan seluruh ${videos.length} video ke Cloud Firestore! Sekarang semua HP, tablet, dan laptop menampilkan video yang sama persis.`
+        });
+      } else {
+        setActionAlert({ type: 'error', message: res?.error || 'Gagal sinkronisasi video ke cloud.' });
+      }
+    } catch {
+      setActionAlert({ type: 'error', message: 'Gagal menghubungi database cloud.' });
+    } finally {
+      setIsSyncingCloud(false);
+      setTimeout(() => setActionAlert(null), 6000);
+    }
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -432,6 +454,17 @@ export const VideoManagement: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleSyncToCloudNow}
+            disabled={isSyncingCloud}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs flex items-center transition space-x-1.5 cursor-pointer disabled:opacity-70"
+            title="Kirim dan sinkronkan semua video di laptop ini ke Cloud Firestore agar langsung muncul di HP"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Menyinkronkan...' : 'Sinkronkan Video ke HP'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleManualRefresh}

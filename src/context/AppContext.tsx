@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   VideoItem,
@@ -46,14 +46,14 @@ interface AppContextType {
   getParticipantWatchLogs: (traineeId: string) => VideoWatchLog[];
   // Videos
   videos: VideoItem[];
-  addVideo: (videoData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>) => { success: boolean; error?: string };
+  addVideo: (videoData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>) => Promise<{ success: boolean; error?: string }>;
   addVideosBatch: (videosData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>[]) => Promise<{ success: boolean; count: number; error?: string }>;
   deleteVideo: (videoId: string) => void;
   deleteVideosBatch: (videoIds: string[], deleteAll?: boolean) => Promise<{ success: boolean; count: number }>;
   updateVideo: (videoId: string, data: Partial<VideoItem>) => void;
   // Products
   products: ProductItem[];
-  addProduct: (productData: Omit<ProductItem, 'id' | 'finalPrice' | 'sku'>) => { success: boolean; error?: string };
+  addProduct: (productData: Omit<ProductItem, 'id' | 'finalPrice' | 'sku'>) => Promise<{ success: boolean; error?: string }>;
   updateProduct: (productId: string, data: Partial<ProductItem>) => void;
   deleteProduct: (productId: string) => void;
   // Cart
@@ -78,21 +78,12 @@ interface AppContextType {
   }) => { success: boolean; order?: Order; error?: string };
   updateOrderStatus: (orderId: string, status: OrderStatus, trackingNote?: string, customTrackingCode?: string) => void;
   refreshServerState: () => Promise<void>;
+  syncMasterStateToServer: (overrideData?: any) => Promise<{ success: boolean; message?: string; error?: any }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const CLEAN_SLATE_FLAG = 'xnvd_fresh_scratch_2026_v1';
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Pastikan browser membersihkan data video & produk lama untuk mulai dari awal
-  if (typeof window !== 'undefined' && localStorage.getItem(CLEAN_SLATE_FLAG) !== 'true') {
-    localStorage.removeItem('xnvd_videos');
-    localStorage.removeItem('xnvd_products');
-    localStorage.removeItem('xnvd_cart');
-    localStorage.setItem(CLEAN_SLATE_FLAG, 'true');
-  }
-
   // Session login user
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('xnvd_currentUser');
@@ -177,12 +168,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [vouchers] = useState<Voucher[]>(INITIAL_VOUCHERS);
 
+  // Status push awal agar data yang ada di laptop langsung tersimpan di server
+  const initialMasterSyncPushedRef = useRef(false);
+
+  // Fungsi sinkronisasi master: mendorong data saat ini ke server sentral untuk disimpan permanen
+  const syncMasterStateToServer = useCallback(async (overrideData?: any) => {
+    try {
+      const payload = {
+        appSettings: overrideData?.appSettings || appSettings,
+        paymentSettings: overrideData?.paymentSettings || paymentSettings,
+        deliveryServices: overrideData?.deliveryServices || deliveryServices,
+        products: overrideData?.products || products,
+        videos: overrideData?.videos || videos,
+        users: overrideData?.allUsers || allUsers,
+        orders: overrideData?.orders || orders,
+        watchLogs: overrideData?.watchLogs || watchLogs,
+        adminUser: currentUser?.role === 'admin' ? currentUser : undefined
+      };
+
+      const res = await fetch('/api/state/sync-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const resData = await res.json();
+      return resData;
+    } catch (err: any) {
+      console.warn('Gagal sync master state ke server:', err);
+      return { success: false, error: err?.message || 'Gagal sinkronisasi data.' };
+    }
+  }, [appSettings, paymentSettings, deliveryServices, products, videos, allUsers, orders, watchLogs, currentUser]);
+
   // Fungsi sinkronisasi data menyeluruh dari Server Sentral
   const refreshServerState = useCallback(async () => {
     try {
       const res = await fetch('/api/state');
       const data = await res.json();
       if (data && data.success) {
+        // PERIKSA: Apakah perangkat lokal (misal laptop) memiliki produk/video/setting
+        // yang belum sempat tersimpan di server sentral?
+        const localProducts = (() => {
+          try {
+            const raw = localStorage.getItem('xnvd_products');
+            return raw ? JSON.parse(raw) : [];
+          } catch { return []; }
+        })();
+
+        const localVideos = (() => {
+          try {
+            const raw = localStorage.getItem('xnvd_videos');
+            return raw ? JSON.parse(raw) : [];
+          } catch { return []; }
+        })();
+
+        const localAppSettings = (() => {
+          try {
+            const raw = localStorage.getItem('xnvd_appSettings');
+            return raw ? JSON.parse(raw) : null;
+          } catch { return null; }
+        })();
+
+        const serverHasFewerProducts = Array.isArray(localProducts) && localProducts.length > 0 &&
+          (!Array.isArray(data.products) || data.products.length < localProducts.length);
+
+        const serverHasFewerVideos = Array.isArray(localVideos) && localVideos.length > 0 &&
+          (!Array.isArray(data.videos) || data.videos.length < localVideos.length);
+
+        // Jika server belum memiliki data lengkap yang ada di laptop, dorong otomatis ke server!
+        if (!initialMasterSyncPushedRef.current && (serverHasFewerProducts || serverHasFewerVideos)) {
+          initialMasterSyncPushedRef.current = true;
+          try {
+            await fetch('/api/state/sync-master', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                products: localProducts,
+                videos: localVideos,
+                appSettings: localAppSettings || undefined
+              })
+            });
+            const retryRes = await fetch('/api/state');
+            const retryData = await retryRes.json();
+            if (retryData && retryData.success) {
+              Object.assign(data, retryData);
+            }
+          } catch (pushErr) {
+            console.warn('Auto push initial data error:', pushErr);
+          }
+        }
+        initialMasterSyncPushedRef.current = true;
+
         if (data.appSettings) setAppSettings(data.appSettings);
         if (data.users && data.users.length > 0) {
           setAllUsers(data.users);
@@ -192,11 +267,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return fresh || prevUser;
           });
         }
-        if (data.videos) {
-          setVideos(Array.isArray(data.videos) ? data.videos : []);
+        if (Array.isArray(data.videos)) {
+          setVideos(data.videos);
         }
-        if (data.products) {
-          setProducts(Array.isArray(data.products) ? data.products : []);
+        if (Array.isArray(data.products)) {
+          setProducts(data.products);
         }
         if (data.orders) setOrders(data.orders);
         if (data.watchLogs) setWatchLogs(data.watchLogs);
@@ -208,11 +283,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Sync saat aplikasi dimuat & polling otomatis berkala (setiap 2.5 detik)
-  // agar saat admin mengunggah video atau peserta mendaftar, kedua pihak langsung sinkron secara real-time
+  // Sync saat aplikasi dimuat & polling otomatis berkala (setiap 2 detik)
+  // agar HP, laptop, dan tablet selalu sinkron seketika
   useEffect(() => {
     refreshServerState();
-    const interval = setInterval(refreshServerState, 2500);
+    const interval = setInterval(refreshServerState, 2000);
     return () => clearInterval(interval);
   }, [refreshServerState]);
 
@@ -548,7 +623,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 7. Kelola Video
-  const addVideo = (
+  const addVideo = async (
     videoData: Omit<VideoItem, 'id' | 'durationFormatted' | 'uploadDate' | 'viewsCount' | 'uploadedBy'>
   ) => {
     const totalSecs = videoData.durationSeconds;
@@ -565,11 +640,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setVideos(prev => [newVideo, ...prev]);
-    fetch('/api/videos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newVideo)
-    }).catch(() => {});
+    try {
+      await fetch('/api/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVideo)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on addVideo:', e);
+    }
 
     return { success: true };
   };
@@ -610,20 +690,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ videos: newItems })
       });
       const data = await resp.json();
-      if (data.success) {
-        await refreshServerState();
-        return { success: true, count: data.count || newItems.length };
-      }
+      await refreshServerState();
+      return { success: true, count: data.count || newItems.length };
     } catch (e) {
       console.warn('Server offline saat batch upload, tersimpan di lokal:', e);
+      return { success: true, count: newItems.length };
     }
-
-    return { success: true, count: newItems.length };
   };
 
-  const deleteVideo = (videoId: string) => {
+  const deleteVideo = async (videoId: string) => {
     setVideos(prev => prev.filter(v => v.id !== videoId));
-    fetch(`/api/videos/${videoId}`, { method: 'DELETE' }).catch(() => {});
+    try {
+      await fetch(`/api/videos/${videoId}`, { method: 'DELETE' });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on deleteVideo:', e);
+    }
   };
 
   const deleteVideosBatch = async (videoIds: string[], deleteAll = false) => {
@@ -667,7 +749,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 8. Kelola Produk
-  const addProduct = (productData: Omit<ProductItem, 'id' | 'finalPrice' | 'sku'>) => {
+  const addProduct = async (productData: Omit<ProductItem, 'id' | 'finalPrice' | 'sku'>) => {
     const finalPrice = Math.max(
       0,
       productData.originalPrice - productData.originalPrice * (productData.discountPercentage / 100)
@@ -681,16 +763,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProducts(prev => [newProduct, ...prev]);
-    fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProduct)
-    }).catch(() => {});
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on addProduct:', e);
+    }
 
     return { success: true };
   };
 
-  const updateProduct = (productId: string, data: Partial<ProductItem>) => {
+  const updateProduct = async (productId: string, data: Partial<ProductItem>) => {
     setProducts(prev =>
       prev.map(p => {
         if (p.id === productId) {
@@ -708,16 +795,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    fetch(`/api/products/${productId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    }).catch(() => {});
+    try {
+      await fetch(`/api/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on updateProduct:', e);
+    }
   };
 
-  const deleteProduct = (productId: string) => {
+  const deleteProduct = async (productId: string) => {
     setProducts(prev => prev.filter(p => p.id !== productId));
-    fetch(`/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
+    try {
+      await fetch(`/api/products/${productId}`, { method: 'DELETE' });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on deleteProduct:', e);
+    }
   };
 
   // 9. Keranjang Belanja
@@ -756,31 +853,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 10. Pengaturan Aplikasi & Pembayaran
-  const updateAppSettings = (newSettings: Partial<AppSettings>) => {
+  const updateAppSettings = async (newSettings: Partial<AppSettings>) => {
     setAppSettings(prev => ({ ...prev, ...newSettings }));
-    fetch('/api/settings/app', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSettings)
-    }).catch(() => {});
+    try {
+      await fetch('/api/settings/app', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on updateAppSettings:', e);
+    }
   };
 
-  const updateDeliveryServices = (services: DeliveryServiceConfig[]) => {
+  const updateDeliveryServices = async (services: DeliveryServiceConfig[]) => {
     setDeliveryServices(services);
-    fetch('/api/settings/delivery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(services)
-    }).catch(() => {});
+    try {
+      await fetch('/api/settings/delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(services)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on updateDeliveryServices:', e);
+    }
   };
 
-  const updatePaymentSettings = (settings: Partial<PaymentSettings>) => {
+  const updatePaymentSettings = async (settings: Partial<PaymentSettings>) => {
     setPaymentSettings(prev => ({ ...prev, ...settings }));
-    fetch('/api/settings/payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    }).catch(() => {});
+    try {
+      await fetch('/api/settings/payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      await refreshServerState();
+    } catch (e) {
+      console.warn('Sync error on updatePaymentSettings:', e);
+    }
   };
 
   // 11. Transaksi & Pesanan
@@ -976,7 +1088,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePaymentSettings,
         createOrder,
         updateOrderStatus,
-        refreshServerState
+        refreshServerState,
+        syncMasterStateToServer
       }}
     >
       {children}

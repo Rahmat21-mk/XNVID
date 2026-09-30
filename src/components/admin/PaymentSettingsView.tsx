@@ -13,7 +13,7 @@ import { useApp } from '../../context/AppContext';
 import { VirtualAccountBank } from '../../types';
 
 export const PaymentSettingsView: React.FC = () => {
-  const { paymentSettings, updatePaymentSettings } = useApp();
+  const { paymentSettings, updatePaymentSettings, syncMasterStateToServer, refreshServerState } = useApp();
 
   const [adminFee, setAdminFee] = useState<number>(paymentSettings.adminFee);
   const [serviceFee, setServiceFee] = useState<number>(paymentSettings.serviceFee);
@@ -60,18 +60,32 @@ export const PaymentSettingsView: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
+      reader.onload = async (uploadEvent) => {
         if (uploadEvent.target?.result) {
-          setQrisCustomImageUrl(uploadEvent.target.result as string);
+          const base64 = uploadEvent.target.result as string;
+          setQrisCustomImageUrl(base64);
+          try {
+            const resp = await fetch('/api/upload/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataUrl: base64 })
+            });
+            const data = await resp.json();
+            if (data.success && data.imageUrl) {
+              setQrisCustomImageUrl(data.imageUrl);
+            }
+          } catch (err) {
+            console.warn('Fallback base64 QRIS:', err);
+          }
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSaveAll = (e: React.FormEvent) => {
+  const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
-    updatePaymentSettings({
+    const updated = {
       adminFee: Number(adminFee),
       serviceFee: Number(serviceFee),
       virtualAccountBanks: banks,
@@ -84,10 +98,16 @@ export const PaymentSettingsView: React.FC = () => {
       manualBankName: manualBankName.trim(),
       manualBankAccount: manualBankAccount.trim(),
       manualBankHolder: manualBankHolder.trim()
+    };
+
+    await updatePaymentSettings(updated);
+    await syncMasterStateToServer({
+      paymentSettings: { ...paymentSettings, ...updated }
     });
+    await refreshServerState();
 
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   return (

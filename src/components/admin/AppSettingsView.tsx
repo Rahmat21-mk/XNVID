@@ -14,7 +14,7 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const AppSettingsView: React.FC = () => {
-  const { appSettings, updateAppSettings, currentUser, updateAdminCredentials } = useApp();
+  const { appSettings, updateAppSettings, currentUser, updateAdminCredentials, syncMasterStateToServer, refreshServerState } = useApp();
 
   const [appName, setAppName] = useState(appSettings.appName);
   const [appLogoUrl, setAppLogoUrl] = useState(appSettings.appLogoUrl || '');
@@ -130,18 +130,32 @@ export const AppSettingsView: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
+      reader.onload = async (uploadEvent) => {
         if (uploadEvent.target?.result) {
-          setAppLogoUrl(uploadEvent.target.result as string);
+          const base64 = uploadEvent.target.result as string;
+          setAppLogoUrl(base64);
+          try {
+            const resp = await fetch('/api/upload/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataUrl: base64 })
+            });
+            const data = await resp.json();
+            if (data.success && data.imageUrl) {
+              setAppLogoUrl(data.imageUrl);
+            }
+          } catch (err) {
+            console.warn('Fallback to base64 for logo:', err);
+          }
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateAppSettings({
+    const updated = {
       appName: appName.trim(),
       appLogoUrl: appLogoUrl.trim(),
       adminSignerName: adminSignerName.trim(),
@@ -150,10 +164,16 @@ export const AppSettingsView: React.FC = () => {
       companyAddress: companyAddress.trim(),
       adminSignatureType: signatureType,
       adminSignatureDataUrl: signatureDataUrl
+    };
+
+    await updateAppSettings(updated);
+    await syncMasterStateToServer({
+      appSettings: { ...appSettings, ...updated }
     });
+    await refreshServerState();
 
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   const handleUpdateAdminPassword = async (e: React.FormEvent) => {

@@ -3,7 +3,9 @@ import {
   Search,
   ShoppingCart,
   Menu,
-  X
+  X,
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ActiveTab } from './Sidebar';
@@ -25,8 +27,21 @@ export const Navbar: React.FC<NavbarProps> = ({
   setSearchQuery,
   onToggleMobileMenu
 }) => {
-  const { currentUser, cart } = useApp();
+  const { currentUser, cart, syncMasterStateToServer, refreshServerState } = useApp();
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  const handleSyncAllDevices = async () => {
+    setIsSyncing(true);
+    const res = await syncMasterStateToServer();
+    await refreshServerState();
+    setIsSyncing(false);
+    if (res?.success) {
+      setSyncToast('Sinkron ke seluruh HP & Laptop berhasil!');
+      setTimeout(() => setSyncToast(null), 3000);
+    }
+  };
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -122,6 +137,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             </>
           )}
 
+          {/* Tombol Sinkronisasi Multi-Perangkat untuk Admin */}
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={handleSyncAllDevices}
+              disabled={isSyncing}
+              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs transition shrink-0 cursor-pointer disabled:opacity-70"
+              title="Sinkronkan seluruh data video, produk, dan pengaturan ke semua perangkat HP/Laptop"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden xs:inline">{isSyncing ? 'Menyinkronkan...' : 'Sinkron ke HP'}</span>
+            </button>
+          )}
+
           {/* Keranjang Belanja Peserta */}
           {currentUser?.role === 'trainee' && (
             <button
@@ -183,6 +211,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+      {/* Notifikasi Sinkronisasi Berhasil */}
+      {syncToast && (
+        <div className="bg-emerald-600 text-white text-xs font-semibold py-1.5 px-4 text-center flex items-center justify-center space-x-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+          <span>{syncToast}</span>
         </div>
       )}
     </header>

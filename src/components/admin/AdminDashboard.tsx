@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   Film,
@@ -8,7 +8,12 @@ import {
   ShieldCheck,
   ChevronRight,
   Boxes,
-  FileCheck
+  FileCheck,
+  RefreshCw,
+  Smartphone,
+  Laptop,
+  CheckCircle2,
+  Database
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ActiveTab } from '../common/Sidebar';
@@ -19,11 +24,32 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
-  const { allUsers, videos, orders, watchLogs } = useApp();
+  const { allUsers, videos, products, orders, watchLogs, syncMasterStateToServer, refreshServerState } = useApp();
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   const trainees = allUsers.filter(u => u.role === 'trainee');
   const totalRevenue = orders.reduce((sum, o) => sum + o.grandTotal, 0);
   const activeDeliveries = orders.filter(o => o.status === 'in_transit' || o.status === 'paid_packing').length;
+
+  const handleSyncToAllDevices = async () => {
+    setIsSyncing(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await syncMasterStateToServer();
+      await refreshServerState();
+      if (res?.success) {
+        setSyncStatusMsg('Sinkronisasi Sukses! Semua data video, produk, dan pengaturan kini aktif dan identik di seluruh HP & Laptop.');
+      } else {
+        setSyncStatusMsg(res?.error || 'Gagal menyinkronkan data ke server.');
+      }
+    } catch {
+      setSyncStatusMsg('Gagal menyinkronkan data.');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    }
+  };
 
   // Hitung total detik yang terpantau secara tersembunyi
   let totalDiscreetSeconds = 0;
@@ -69,7 +95,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) 
         </div>
       </div>
 
-      {/* Baris Metrik Angka */}
+      {/* Card Multi-Device Cloud Sync: Menyamakan Laptop, HP & Tablet */}
+      <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 rounded-2xl p-5 border border-blue-800/40 text-white shadow-md">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-bold tracking-wide uppercase text-blue-300 flex items-center">
+                <Database className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                Server Sentral Multi-Perangkat Terhubung
+              </span>
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Laptop className="w-5 h-5 text-blue-400" />
+              <span>Sinkronisasi Otomatis Laptop & HP Real-Time</span>
+              <Smartphone className="w-4 h-4 text-emerald-400" />
+            </h3>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Semua video ({videos.length}), produk ({products.length}), data peserta, dan pengaturan resmi tersimpan permanen di server sentral dan diperbarui secara otomatis ke seluruh HP, laptop, dan tablet.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full sm:w-auto">
+            <button
+              onClick={handleSyncToAllDevices}
+              disabled={isSyncing}
+              className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-70"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Menyinkronkan Server...' : 'Sinkronkan ke Seluruh HP & Laptop Sekarang'}</span>
+            </button>
+          </div>
+        </div>
+
+        {syncStatusMsg && (
+          <div className="mt-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-xs px-3.5 py-2 rounded-xl flex items-center space-x-2 animate-in fade-in duration-200">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{syncStatusMsg}</span>
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase">

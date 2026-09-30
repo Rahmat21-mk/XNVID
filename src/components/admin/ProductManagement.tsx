@@ -89,10 +89,24 @@ export const ProductManagement: React.FC = () => {
       }
 
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         if (event.target?.result) {
-          setImage(event.target.result as string);
+          const base64Data = event.target.result as string;
+          setImage(base64Data);
           setFormError(null);
+          try {
+            const resp = await fetch('/api/upload/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataUrl: base64Data })
+            });
+            const data = await resp.json();
+            if (data.success && data.imageUrl) {
+              setImage(data.imageUrl);
+            }
+          } catch (err) {
+            console.warn('Fallback ke base64 gambar:', err);
+          }
         }
       };
       reader.readAsDataURL(file);

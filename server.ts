@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import {
   INITIAL_APP_SETTINGS,
+  INITIAL_USERS,
   INITIAL_VIDEOS,
   INITIAL_PRODUCTS,
   INITIAL_DELIVERY_SERVICES,
@@ -94,30 +95,49 @@ function loadDatabase(): ServerDbState {
       if (!parsed.adminUser || parsed.adminUser.role !== 'admin') {
         parsed.adminUser = DEFAULT_PERMANENT_ADMIN;
       }
-      // Pastikan users menyertakan adminUser
-      const hasAdmin = parsed.users?.some((u: User) => u.id === parsed.adminUser.id && u.role === 'admin');
-      if (!hasAdmin) {
-        parsed.users = [parsed.adminUser, ...(parsed.users || []).filter((u: User) => u.role !== 'admin')];
+      // Pastikan users menyertakan adminUser dan akun peserta bawaan
+      if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
+        parsed.users = INITIAL_USERS;
+      } else {
+        const hasAdmin = parsed.users.some((u: User) => u.id === parsed.adminUser.id && u.role === 'admin');
+        if (!hasAdmin) {
+          parsed.users.unshift(parsed.adminUser);
+        }
+        const hasTrainee = parsed.users.some((u: User) => u.role === 'trainee');
+        if (!hasTrainee) {
+          parsed.users.push(INITIAL_USERS[1]);
+        }
       }
+
+      // Pastikan selalu ada modul video pelatihan untuk peserta
+      if (!Array.isArray(parsed.videos) || parsed.videos.length === 0) {
+        parsed.videos = INITIAL_VIDEOS;
+      }
+
+      // Pastikan selalu ada produk peralatan praktik untuk peserta
+      if (!Array.isArray(parsed.products) || parsed.products.length === 0) {
+        parsed.products = INITIAL_PRODUCTS;
+      }
+
+      saveDatabase(parsed);
       return parsed;
     }
   } catch (err) {
     console.error('Error loading database file, initializing clean state:', err);
   }
 
-  // Database bersih untuk publik: TIDAK ADA akun dummy/uji coba peserta
-  // Hanya ada 1 akun admin tunggal yang permanen
+  // Database awal lengkap dengan 20 modul video industri dan katalog alat bersertifikat
   const initialState: ServerDbState = {
     adminUser: DEFAULT_PERMANENT_ADMIN,
-    users: [DEFAULT_PERMANENT_ADMIN], // Tanpa peserta uji coba palsu
+    users: INITIAL_USERS,
     videos: INITIAL_VIDEOS,
     products: INITIAL_PRODUCTS,
     deliveryServices: INITIAL_DELIVERY_SERVICES,
     paymentSettings: INITIAL_PAYMENT_SETTINGS,
     appSettings: INITIAL_APP_SETTINGS,
     vouchers: INITIAL_VOUCHERS,
-    orders: [], // Kosong untuk pemakaian nyata
-    watchLogs: {} // Kosong untuk pemakaian nyata
+    orders: [],
+    watchLogs: {}
   };
 
   saveDatabase(initialState);

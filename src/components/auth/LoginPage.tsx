@@ -275,11 +275,26 @@ export const LoginPage: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center space-x-1.5"
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition flex items-center justify-center space-x-1.5 active:scale-98"
                   >
-                    <span>Masuk ke Dashboard</span>
+                    <span>Masuk ke Dashboard Peserta</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
+
+                  <div className="pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setTraineeId('104821');
+                        setErrorMsg(null);
+                        await loginAsTrainee('104821');
+                      }}
+                      className="w-full py-2 px-3 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 transition flex items-center justify-center space-x-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Masuk Cepat Peserta (ID: 104821)</span>
+                    </button>
+                  </div>
                 </form>
               </div>
             )}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Check,
   Tag,
   Info,
-  PackageOpen
+  PackageOpen,
+  RefreshCw
 } from 'lucide-react';
 import { ProductItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -16,10 +17,21 @@ interface StoreViewProps {
 }
 
 export const StoreView: React.FC<StoreViewProps> = ({ searchQuery, openCheckout }) => {
-  const { products, addToCart, cart } = useApp();
+  const { products, addToCart, cart, refreshServerState } = useApp();
 
   const [selectedProductModal, setSelectedProductModal] = useState<ProductItem | null>(null);
   const [addedPopupId, setAddedPopupId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshServerState();
+  }, [refreshServerState]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshServerState();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Filter pencarian berdasarkan nama dan deskripsi produk (tanpa kategori)
   const filteredProducts = products.filter(p => {
@@ -84,6 +96,14 @@ export const StoreView: React.FC<StoreViewProps> = ({ searchQuery, openCheckout 
                 ? 'Administrator sedang mempersiapkan katalog bahan praktikum dan alat uji baru. Produk bersertifikat akan segera tersedia di sini.'
                 : 'Tidak ada produk yang cocok dengan kata kunci pencarian Anda. Silakan coba kata kunci yang lain.'}
             </p>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="mt-4 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold inline-flex items-center space-x-1.5 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
+              <span>{isRefreshing ? 'Memperbarui...' : 'Periksa Produk Terbaru'}</span>
+            </button>
           </div>
         ) : (
           filteredProducts.map((product) => {

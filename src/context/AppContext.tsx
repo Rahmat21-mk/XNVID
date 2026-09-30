@@ -126,12 +126,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [videos, setVideos] = useState<VideoItem[]>(() => {
     const saved = localStorage.getItem('xnvd_videos');
-    return saved ? JSON.parse(saved) : INITIAL_VIDEOS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_VIDEOS;
   });
 
   const [products, setProducts] = useState<ProductItem[]>(() => {
     const saved = localStorage.getItem('xnvd_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_PRODUCTS;
   });
 
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -176,8 +192,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return fresh || prevUser;
           });
         }
-        if (data.videos) setVideos(data.videos);
-        if (data.products) setProducts(data.products);
+        if (data.videos) {
+          setVideos(Array.isArray(data.videos) && data.videos.length > 0 ? data.videos : INITIAL_VIDEOS);
+        }
+        if (data.products) {
+          setProducts(Array.isArray(data.products) && data.products.length > 0 ? data.products : INITIAL_PRODUCTS);
+        }
         if (data.orders) setOrders(data.orders);
         if (data.watchLogs) setWatchLogs(data.watchLogs);
         if (data.deliveryServices) setDeliveryServices(data.deliveryServices);

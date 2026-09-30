@@ -25,9 +25,32 @@
       "role": "trainee",
       "registeredAt": "2026-02-15T09:30:00Z",
       "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80"
+    },
+    {
+      "id": "273132",
+      "name": "Ahmad Fauzi",
+      "email": "ahmad@example.com",
+      "role": "trainee",
+      "registeredAt": "2026-09-30T10:51:40.038Z",
+      "avatar": "https://api.dicebear.com/7.x/initials/svg?seed=Ahmad%20Fauzi"
     }
   ],
-  "videos": [],
+  "videos": [
+    {
+      "title": "Video Uji Coba 1",
+      "description": "Deskripsi 1",
+      "durationSeconds": 600,
+      "thumbnail": "https://example.com/thumb.jpg",
+      "fileSizeMb": 10,
+      "videoUrl": "/uploads/videos/test.mp4",
+      "id": "VID-001",
+      "durationFormatted": "10m 00d",
+      "uploadDate": "2026-09-30T10:51:45.090Z",
+      "viewsCount": 0,
+      "uploadedBy": "Administrator Utama XNVD",
+      "checksum": "CHK-MUNZJN0I-3287"
+    }
+  ],
   "products": [],
   "deliveryServices": [
     {

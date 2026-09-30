@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -9,13 +9,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   ShieldCheck,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { User } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 export const ParticipantManagement: React.FC = () => {
-  const { allUsers, watchLogs, videos, resetParticipantId } = useApp();
+  const { allUsers, watchLogs, videos, resetParticipantId, refreshServerState } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrainee, setSelectedTrainee] = useState<User | null>(null);
@@ -24,6 +25,17 @@ export const ParticipantManagement: React.FC = () => {
   const [newIdInput, setNewIdInput] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshServerState();
+  }, [refreshServerState]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshServerState();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const trainees = allUsers.filter(u => u.role === 'trainee').filter(u =>
     u.id.includes(searchQuery) ||
@@ -70,13 +82,25 @@ export const ParticipantManagement: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header Halaman */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-          Data Peserta & Pemantauan Durasi Tonton Tersembunyi
-        </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Pantau judul video dan durasi tonton aktif peserta untuk penilaian kompetensi praktikum; atur ulang ID 6-digit.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            Data Peserta & Pemantauan Durasi Tonton Tersembunyi
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Total {trainees.length} Peserta Terdaftar • Sinkronisasi otomatis aktif
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleManualRefresh}
+          disabled={isRefreshing}
+          className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-xs flex items-center transition shrink-0 space-x-1.5 cursor-pointer"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <span>Segarkan Data Peserta</span>
+        </button>
       </div>
 
       {/* Pemberitahuan Pemantauan Tersembunyi */}

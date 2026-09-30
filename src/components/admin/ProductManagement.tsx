@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus,
   Edit2,
@@ -9,18 +9,30 @@ import {
   Upload,
   CheckCircle2,
   AlertCircle,
-  PackageOpen
+  PackageOpen,
+  RefreshCw
 } from 'lucide-react';
 import { ProductItem } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 
 export const ProductManagement: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct } = useApp();
+  const { products, addProduct, updateProduct, deleteProduct, refreshServerState } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshServerState();
+  }, [refreshServerState]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshServerState();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Form Fields: nama produk, harga asli (Rupiah), persentase diskon, kuantitas (stok), bobot, dan deskripsi
   const [name, setName] = useState('');
@@ -135,13 +147,25 @@ export const ProductManagement: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center transition shrink-0"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          <span>Tambah Produk Baru</span>
-        </button>
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-xs flex items-center transition space-x-1.5 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Segarkan Katalog</span>
+          </button>
+
+          <button
+            onClick={handleOpenAdd}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center transition shrink-0"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            <span>Tambah Produk Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Kolom Pencarian */}

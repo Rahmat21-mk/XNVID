@@ -208,11 +208,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Sync saat aplikasi dimuat & polling otomatis berkala (setiap 6 detik)
-  // agar saat admin mengunggah video, akun peserta langsung melihat video secara real-time
+  // Sync saat aplikasi dimuat & polling otomatis berkala (setiap 2.5 detik)
+  // agar saat admin mengunggah video atau peserta mendaftar, kedua pihak langsung sinkron secara real-time
   useEffect(() => {
     refreshServerState();
-    const interval = setInterval(refreshServerState, 6000);
+    const interval = setInterval(refreshServerState, 2500);
     return () => clearInterval(interval);
   }, [refreshServerState]);
 
@@ -311,7 +311,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Alamat email yang dimasukkan tidak valid.' };
     }
 
-    // Daftarkan ke server sentral
+    // Daftarkan ke server sentral (tersimpan permanen di basis data)
     try {
       const resp = await fetch('/api/auth/trainee-register', {
         method: 'POST',
@@ -322,45 +322,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (resData.success && resData.user) {
         setAllUsers(prev => [...prev.filter(u => u.id !== resData.user.id), resData.user]);
         setCurrentUser(resData.user);
+        await refreshServerState();
         return { success: true, generatedId: resData.generatedId };
-      } else if (resp.status !== 500) {
+      } else {
         return { success: false, error: resData.error || 'Pendaftaran gagal.' };
       }
-    } catch (e) {
-      console.warn('Server offline, fallback ke generate lokal:', e);
-    }
-
-    // Fallback lokal
-    if (allUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
-      const existing = allUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    } catch (e: any) {
+      console.error('Error pendaftaran ke server:', e);
       return {
         success: false,
-        error: `Email sudah terdaftar dengan ID #${existing?.id}. Silakan masuk menggunakan ID tersebut.`
+        error: 'Gagal menghubungi server pendaftaran. Silakan periksa jaringan dan coba lagi.'
       };
     }
-
-    let generatedId = '';
-    let isUnique = false;
-    while (!isUnique) {
-      generatedId = Math.floor(100000 + Math.random() * 900000).toString();
-      if (!allUsers.some(u => u.id === generatedId)) {
-        isUnique = true;
-      }
-    }
-
-    const newUser: User = {
-      id: generatedId,
-      name: cleanName,
-      email: cleanEmail,
-      role: 'trainee',
-      registeredAt: new Date().toISOString(),
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(cleanName)}`
-    };
-
-    setAllUsers(prev => [...prev, newUser]);
-    setCurrentUser(newUser);
-
-    return { success: true, generatedId };
   };
 
   // 3. Admin Login (Hanya 1 akun admin tunggal yang permanen)

@@ -160,6 +160,17 @@ async function startServer() {
 
   let db = loadDatabase();
 
+  // Middleware CORS untuk memastikan akses dari seluruh peramban seluler / HP lancar
+  app.use((_req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (_req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
@@ -211,7 +222,8 @@ async function startServer() {
   });
 
   // 1. Ambil seluruh state tersentralisasi
-  app.get('/api/state', (req, res) => {
+  app.get('/api/state', (_req, res) => {
+    db = loadDatabase();
     // Sembunyikan password peserta bila ada, tapi biarkan admin dicek via endpoint terpisah
     const sanitizedUsers = db.users.map(u => ({
       ...u,

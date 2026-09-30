@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   UploadCloud,
   Trash2,
@@ -13,7 +13,8 @@ import {
   Layers,
   Check,
   CheckSquare,
-  Square
+  Square,
+  RefreshCw
 } from 'lucide-react';
 import { VideoItem } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -66,6 +67,17 @@ export const VideoManagement: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    refreshServerState();
+  }, [refreshServerState]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshServerState();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -419,18 +431,30 @@ export const VideoManagement: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setFormError(null);
-            setFormSuccess(null);
-            setStagedVideos([]);
-            setIsUploadModalOpen(true);
-          }}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center transition shrink-0"
-        >
-          <UploadCloud className="w-4 h-4 mr-2" />
-          <span>Upload Video Baru (Batch)</span>
-        </button>
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-xs flex items-center transition space-x-1.5 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Segarkan Repositori</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setFormError(null);
+              setFormSuccess(null);
+              setStagedVideos([]);
+              setIsUploadModalOpen(true);
+            }}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center transition"
+          >
+            <UploadCloud className="w-4 h-4 mr-2" />
+            <span>Upload Video Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Bar Status Kapasitas 200 Video */}
